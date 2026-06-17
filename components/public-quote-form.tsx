@@ -1,0 +1,113 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+
+type SaveState = {
+  status: "idle" | "saving" | "saved" | "error";
+  message: string;
+};
+
+export function PublicQuoteForm() {
+  const [state, setState] = useState<SaveState>({
+    status: "idle",
+    message: "",
+  });
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const body = Object.fromEntries(formData.entries());
+
+    setState({ status: "saving", message: "Gönderiliyor..." });
+
+    const response = await fetch("/api/public/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setState({
+        status: "error",
+        message: payload?.error ?? "Gönderim başarısız.",
+      });
+      return;
+    }
+
+    setState({ status: "saved", message: "Talebiniz alındı." });
+    form.reset();
+  }
+
+  return (
+    <form className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm" onSubmit={submit}>
+      <Status state={state} pending={state.status === "saving"} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field name="customerName" label="Ad Soyad" />
+        <Field name="phone" label="Telefon" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field name="email" label="E-posta" type="email" />
+        <div />
+      </div>
+      <Field name="message" label="Mesaj" as="textarea" rows={5} />
+      <button
+        className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={state.status === "saving"}
+        type="submit"
+      >
+        Teklif gönder
+      </button>
+    </form>
+  );
+}
+
+function Field({
+  name,
+  label,
+  type = "text",
+  as = "input",
+  rows = 4,
+}: {
+  name: string;
+  label: string;
+  type?: string;
+  as?: "input" | "textarea";
+  rows?: number;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      {as === "textarea" ? (
+        <textarea
+          className="min-h-32 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+          name={name}
+          rows={rows}
+        />
+      ) : (
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+          name={name}
+          type={type}
+        />
+      )}
+    </label>
+  );
+}
+
+function Status({ state, pending }: { state: SaveState; pending: boolean }) {
+  const hidden = state.status === "idle" && !pending;
+  if (hidden) return null;
+
+  const tone =
+    state.status === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : state.status === "saved"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+        : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return <div className={`rounded-2xl border px-4 py-3 text-sm ${tone}`}>{state.message}</div>;
+}
