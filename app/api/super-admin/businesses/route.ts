@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
   createBusinessWithAdmin,
   updateBusinessAdminPasswordRecord,
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
       created.admin.id,
       adminPassword,
     );
+    revalidatePath("/super-admin");
 
     return NextResponse.json({
       ok: true,

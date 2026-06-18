@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
   createBusinessAdminRecord,
+  deleteBusinessRecord,
   deleteBusinessAdminRecord,
   getBusinessById,
   updateBusinessActiveRecord,
@@ -49,14 +51,17 @@ export async function PATCH(
   try {
     if (target === "business") {
       if (action === "delete") {
-        return NextResponse.json(
-          { error: "Business silme kapali." },
-          { status: 400 },
-        );
+        await deleteBusinessRecord(id);
+        revalidatePath("/super-admin");
+        return NextResponse.json({
+          ok: true,
+          message: "Business kalıcı olarak silindi",
+        });
       }
 
       await updateBusinessActiveRecord(id, action === "activate");
       const business = await getBusinessById(id);
+      revalidatePath("/super-admin");
       return NextResponse.json({ ok: true, business });
     }
 
@@ -67,6 +72,7 @@ export async function PATCH(
     }
 
     const business = await getBusinessById(id);
+    revalidatePath("/super-admin");
     return NextResponse.json({ ok: true, business });
   } catch (error) {
     const message =
@@ -103,6 +109,7 @@ export async function POST(
   try {
     await createBusinessAdminRecord(id, adminEmail, adminPassword);
     const business = await getBusinessById(id);
+    revalidatePath("/super-admin");
     return NextResponse.json({ ok: true, business });
   } catch (error) {
     const message =

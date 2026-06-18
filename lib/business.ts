@@ -41,6 +41,14 @@ export type UserRecord = {
 };
 
 export type BusinessListRecord = BusinessRecord & {
+  admin: {
+    id: string;
+    email: string;
+    password: string | null;
+    passwordChangedAt: string | null;
+    role: SessionRole | null;
+    active: boolean | null;
+  } | null;
   adminId: string | null;
   adminEmail: string;
   adminPassword: string | null;
@@ -321,7 +329,7 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
         `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
-        `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN`,
+        `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
       ),
     ]);
 
@@ -332,13 +340,7 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
         continue;
       }
 
-      const current = adminByBusinessId.get(businessId);
-      const currentDeleted = current
-        ? Boolean(current.deleted_at)
-        : true;
-      const nextDeleted = Boolean(row.deleted_at);
-
-      if (!current || (currentDeleted && !nextDeleted)) {
+      if (!adminByBusinessId.has(businessId)) {
         adminByBusinessId.set(businessId, row);
       }
     }
@@ -346,22 +348,28 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
     return businessRows.map((row) => {
       const business = fromSupabaseBusiness(row);
       const admin = adminByBusinessId.get(business.id);
+      const adminSummary = admin && !admin.deleted_at
+        ? {
+            id: String(admin.id ?? ""),
+            email: String(admin.email ?? ""),
+            password: String(admin.password_plaintext ?? "") || null,
+            passwordChangedAt:
+              (admin.password_changed_at as string | null) ?? null,
+            role: (admin.role as SessionRole) ?? null,
+            active: Boolean(admin.active ?? false),
+          }
+        : null;
 
       return {
         ...business,
-        adminId: admin ? String(admin.id ?? "") : null,
-        adminEmail: admin ? String(admin.email ?? "") : "",
-        adminPassword:
-          admin && !admin.deleted_at
-            ? (String(admin.password_plaintext ?? "") || null)
-            : null,
-        adminPasswordChangedAt:
-          admin && !admin.deleted_at
-            ? ((admin.password_changed_at as string | null) ?? null)
-            : null,
-        adminDeletedAt: admin ? ((admin.deleted_at as string | null) ?? null) : null,
-        adminRole: admin && !admin.deleted_at ? ((admin.role as SessionRole) ?? null) : null,
-        adminActive: admin && !admin.deleted_at ? Boolean(admin.active ?? false) : null,
+        admin: adminSummary,
+        adminId: adminSummary?.id ?? null,
+        adminEmail: adminSummary?.email ?? "",
+        adminPassword: adminSummary?.password ?? null,
+        adminPasswordChangedAt: adminSummary?.passwordChangedAt ?? null,
+        adminDeletedAt: null,
+        adminRole: adminSummary?.role ?? null,
+        adminActive: adminSummary?.active ?? null,
       } satisfies BusinessListRecord;
     });
   }
@@ -370,16 +378,28 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
     const admin = demoUsers.find(
       (user) => user.businessId === business.id && user.role === "BUSINESS_ADMIN",
     );
+    const adminSummary =
+      admin && !admin.deletedAt
+        ? {
+            id: admin.id,
+            email: admin.email,
+            password: admin.passwordPlaintext,
+            passwordChangedAt: admin.passwordChangedAt,
+            role: admin.role,
+            active: admin.active,
+          }
+        : null;
 
     return {
       ...business,
-      adminId: admin?.id ?? null,
-      adminEmail: admin?.deletedAt ? "" : admin?.email ?? "",
-      adminPassword: admin?.deletedAt ? null : admin?.passwordPlaintext ?? null,
-      adminPasswordChangedAt: admin?.deletedAt ? null : admin?.passwordChangedAt ?? null,
-      adminDeletedAt: admin?.deletedAt ?? null,
-      adminRole: admin?.deletedAt ? null : admin?.role ?? null,
-      adminActive: admin?.deletedAt ? null : admin?.active ?? null,
+      admin: adminSummary,
+      adminId: adminSummary?.id ?? null,
+      adminEmail: adminSummary?.email ?? "",
+      adminPassword: adminSummary?.password ?? null,
+      adminPasswordChangedAt: adminSummary?.passwordChangedAt ?? null,
+      adminDeletedAt: null,
+      adminRole: adminSummary?.role ?? null,
+      adminActive: adminSummary?.active ?? null,
     } satisfies BusinessListRecord;
   });
 }
@@ -865,6 +885,47 @@ export async function updateBusinessActiveRecord(
   existing.active = active;
   existing.updatedAt = new Date().toISOString();
   return existing;
+}
+
+export async function deleteBusinessRecord(businessId: string) {
+  const config = getSupabaseConfig();
+
+  if (config) {
+    const existing = await getBusinessById(businessId);
+
+    if (!existing) {
+      throw new Error("Business bulunamadi.");
+    }
+
+    const response = await supabaseFetch(
+      `/businesses?id=eq.${encodeURIComponent(businessId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!response?.ok) {
+      throw new Error("Business silinemedi.");
+    }
+
+    return true;
+  }
+
+  const index = demoBusinesses.findIndex((business) => business.id === businessId);
+
+  if (index < 0) {
+    throw new Error("Business bulunamadi.");
+  }
+
+  demoBusinesses.splice(index, 1);
+
+  for (let i = demoUsers.length - 1; i >= 0; i -= 1) {
+    if (demoUsers[i]?.businessId === businessId) {
+      demoUsers.splice(i, 1);
+    }
+  }
+
+  return true;
 }
 
 export async function updateBusinessAdminActiveRecord(

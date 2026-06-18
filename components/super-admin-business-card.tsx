@@ -26,9 +26,14 @@ export function SuperAdminBusinessCard({ business }: Props) {
 
   async function runAction(target: ActionTarget, action: ActionType) {
     if (action === "delete") {
-      const confirmed = window.confirm(
-        "Bu admin hesabini silmek istediginize emin misiniz? Bu islem geri alinamaz.",
-      );
+      const confirmed =
+        target === "business"
+          ? window.confirm(
+              "Bu business kalıcı olarak silinecek. Devam etmek istiyor musunuz?",
+            )
+          : window.confirm(
+              "Bu admin hesabini silmek istediginize emin misiniz? Bu islem geri alinamaz.",
+            );
 
       if (!confirmed) {
         return;
@@ -55,9 +60,13 @@ export function SuperAdminBusinessCard({ business }: Props) {
       return;
     }
 
+    const body = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+
     setState({
       error: null,
-      success: "Islem tamamlandi.",
+      success: body?.message ?? "Islem tamamlandi.",
     });
 
     startTransition(() => {
@@ -98,8 +107,9 @@ export function SuperAdminBusinessCard({ business }: Props) {
     });
   }
 
-  const hasAdmin = Boolean(business.adminId) && Boolean(business.adminEmail);
-  const adminActive = business.adminActive ?? false;
+  const admin = business.admin;
+  const hasAdmin = Boolean(admin);
+  const adminActive = admin?.active ?? false;
 
   return (
     <article className="rounded-[24px] border border-slate-200 bg-white p-5">
@@ -112,15 +122,26 @@ export function SuperAdminBusinessCard({ business }: Props) {
             {business.name}
           </h3>
         </div>
-        <span
-          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-            business.active
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
-          }`}
-        >
-          {business.active ? "Active" : "Passive"}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            aria-label="Business sil"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-base font-semibold text-rose-600 transition hover:border-rose-300 hover:bg-rose-100"
+            title="Business sil"
+            type="button"
+            onClick={() => runAction("business", "delete")}
+          >
+            🗑
+          </button>
+          <span
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              business.active
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}
+          >
+            {business.active ? "Active" : "Passive"}
+          </span>
+        </div>
       </div>
 
       <dl className="mt-4 grid gap-3 text-sm text-slate-600">
@@ -129,18 +150,22 @@ export function SuperAdminBusinessCard({ business }: Props) {
         <Detail label="Status" value={business.domainStatus} />
         {hasAdmin ? (
           <>
-            <Detail label="Admin email" value={business.adminEmail} />
-            <Detail
-              label="Giris sifresi"
-              value={business.adminPassword || "Kayıtlı değil"}
-            />
+            <Detail label="Admin email" value={admin?.email ?? "Admin yok"} />
+            <Detail label="Giris sifresi" value={admin?.password || "-"} />
             <Detail
               label="Sifre degisim"
-              value={formatDateTime(business.adminPasswordChangedAt)}
+              value={formatDateTime(admin?.passwordChangedAt ?? null)}
             />
             <Detail label="Admin durumu" value={adminActive ? "Active" : "Passive"} />
           </>
-        ) : null}
+        ) : (
+          <>
+            <Detail label="Admin email" value="Admin yok" />
+            <Detail label="Giris sifresi" value="-" />
+            <Detail label="Sifre degisim" value="Kayitli degil" />
+            <Detail label="Admin durumu" value="Silindi" />
+          </>
+        )}
       </dl>
 
       <div className="mt-5 border-t border-slate-200 pt-5">
@@ -177,9 +202,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
         <div className="mt-4 grid gap-3">
           {!hasAdmin ? (
             <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-700">
-                Admin olustur
-              </p>
+              <p className="text-sm font-medium text-slate-700">Admin olustur</p>
               <label className="grid gap-2">
                 <span className="text-sm font-medium text-slate-700">Admin email</span>
                 <input
@@ -276,13 +299,13 @@ function ActionButton({
 
 function formatDateTime(value: string | null) {
   if (!value) {
-    return "Kayıtlı değil";
+    return "Kayitli degil";
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Kayıtlı değil";
+    return "Kayitli degil";
   }
 
   return new Intl.DateTimeFormat("tr-TR", {

@@ -3,6 +3,9 @@ import { SuperAdminBusinessCard } from "@/components/super-admin-business-card";
 import { listBusinesses } from "@/lib/business";
 import { requireRole } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const metrics = [
   { label: "Businesses", value: "12", note: "Aktif hesap sayisi" },
   { label: "Active plans", value: "9", note: "Paketi calisan firmalar" },
