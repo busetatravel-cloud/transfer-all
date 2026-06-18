@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createBusinessWithAdmin } from "@/lib/business";
+import {
+  createBusinessWithAdmin,
+  updateBusinessAdminPasswordRecord,
+} from "@/lib/business";
 import { requireApiRole } from "@/lib/auth";
 
 export async function POST(request: Request) {
@@ -38,6 +41,12 @@ export async function POST(request: Request) {
       adminEmail,
       adminPassword,
     });
+
+    await updateBusinessAdminPasswordRecord(
+      created.business.id,
+      created.admin.id,
+      adminPassword,
+    );
 
     return NextResponse.json({
       ok: true,

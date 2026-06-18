@@ -3,7 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyPassword } from "@/lib/password";
-import { findUserByEmail } from "@/lib/business";
+import { findUserByEmail, getBusinessById } from "@/lib/business";
 import {
   createSessionToken,
   getSessionSecret,
@@ -26,7 +26,7 @@ export async function authenticate(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const record = await resolveAuthRecord(normalizedEmail);
 
-  if (!record || !record.active) {
+  if (!record || !record.active || record.deletedAt) {
     return null;
   }
 
@@ -36,6 +36,13 @@ export async function authenticate(email: string, password: string) {
 
   if (record.role === "BUSINESS_ADMIN" && !record.businessId) {
     return null;
+  }
+
+  if (record.role === "BUSINESS_ADMIN" && record.businessId) {
+    const business = await getBusinessById(record.businessId);
+    if (!business || !business.active) {
+      return null;
+    }
   }
 
   return {

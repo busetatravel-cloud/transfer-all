@@ -8,7 +8,6 @@ create or replace function create_business_with_admin(
   p_name text,
   p_email text,
   p_admin_email text,
-  p_admin_password text,
   p_admin_password_hash text,
   p_phone text default null,
   p_whatsapp text default null,
@@ -33,10 +32,6 @@ begin
 
   if nullif(trim(coalesce(p_name, '')), '') is null then
     raise exception 'Business name is required';
-  end if;
-
-  if nullif(trim(coalesce(p_admin_password, '')), '') is null then
-    raise exception 'Admin password is required';
   end if;
 
   if nullif(trim(coalesce(p_admin_password_hash, '')), '') is null then
@@ -92,7 +87,7 @@ begin
     'BUSINESS_ADMIN',
     normalized_admin_email,
     p_admin_password_hash,
-    p_admin_password,
+    null,
     changed_at,
     true
   )

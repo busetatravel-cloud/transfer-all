@@ -1,5 +1,5 @@
 import { BusinessCreateForm } from "@/components/business-create-form";
-import { DomainUpdateForm } from "@/components/domain-update-form";
+import { SuperAdminBusinessCard } from "@/components/super-admin-business-card";
 import { listBusinesses } from "@/lib/business";
 import { requireRole } from "@/lib/auth";
 
@@ -42,52 +42,7 @@ export default async function SuperAdminPage() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           {businesses.map((business) => (
-            <article
-              key={business.id}
-              className="rounded-[24px] border border-slate-200 bg-white p-5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Business
-                  </p>
-                  <h3 className="mt-2 text-xl font-semibold text-slate-900">
-                    {business.name}
-                  </h3>
-                </div>
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  {business.active ? "Active" : "Passive"}
-                </span>
-              </div>
-
-              <dl className="mt-4 grid gap-3 text-sm text-slate-600">
-                <Detail label="Business email" value={business.email} />
-                <Detail label="Admin email" value={business.adminEmail || "-"} />
-                <Detail label="Giris sifresi" value={business.adminPassword || "-"} />
-                <Detail
-                  label="Sifre degisim"
-                  value={formatDateTime(business.adminPasswordChangedAt)}
-                />
-                <Detail label="Domain" value={business.domain ?? "Not set"} />
-                <Detail label="Status" value={business.domainStatus} />
-              </dl>
-
-              <div className="mt-5 border-t border-slate-200 pt-5">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  Domain sekmesi
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  Public site eşleşmesi ve manuel doğrulama bu alandan yönetilir.
-                </p>
-                <div className="mt-4">
-                  <DomainUpdateForm
-                    businessId={business.id}
-                    domain={business.domain}
-                    domainStatus={business.domainStatus}
-                  />
-                </div>
-              </div>
-            </article>
+            <SuperAdminBusinessCard key={business.id} business={business} />
           ))}
         </div>
 
@@ -109,30 +64,4 @@ export default async function SuperAdminPage() {
       </div>
     </section>
   );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="font-medium text-slate-900">{value}</dd>
-    </div>
-  );
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }
