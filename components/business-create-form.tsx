@@ -89,7 +89,7 @@ export function BusinessCreateForm() {
         <Field name="email" label="Business email" placeholder="info@firma.com" />
         <Field name="phone" label="Telefon" placeholder="+90..." />
         <Field name="whatsapp" label="WhatsApp" placeholder="+90..." />
-        <Field name="domain" label="Domain" placeholder="firma.com" />
+        <Field name="domain" label="Domain" placeholder="firma.com" required={false} />
         <Field name="adminEmail" label="Admin email" placeholder="admin@firma.com" />
       </div>
 
@@ -114,7 +114,7 @@ export function BusinessCreateForm() {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          Admin login businessId ile baglanir. Business email ve user email ayridir.
+          Business email ile user email ayni da olabilir, farkli da. Login her zaman user.email ile calisir.
         </p>
         <button
           className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
@@ -133,11 +133,13 @@ function Field({
   label,
   placeholder,
   type = "text",
+  required = true,
 }: {
   name: string;
   label: string;
   placeholder: string;
   type?: string;
+  required?: boolean;
 }) {
   return (
     <label className="grid gap-2">
@@ -147,7 +149,7 @@ function Field({
         name={name}
         placeholder={placeholder}
         type={type}
-        required
+        required={required}
       />
     </label>
   );

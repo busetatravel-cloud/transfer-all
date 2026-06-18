@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { getSupabaseConfig } from "@/lib/supabase-config";
+import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessRequestRecord = {
   id: string;
@@ -81,9 +81,7 @@ function mapRequest(row: Record<string, unknown>): BusinessRequestRecord {
 }
 
 export async function getBusinessRequests(businessId: string) {
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
       `/requests?select=id,business_id,customer_name,phone,email,message,status,created_at&business_id=eq.${encodeURIComponent(
         businessId,
@@ -113,9 +111,7 @@ export async function createBusinessRequest(
     message: input.message.trim(),
   };
 
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(`/requests`, {
       method: "POST",
       body: JSON.stringify(payload),

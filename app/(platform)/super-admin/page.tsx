@@ -62,7 +62,12 @@ export default async function SuperAdminPage() {
 
               <dl className="mt-4 grid gap-3 text-sm text-slate-600">
                 <Detail label="Business email" value={business.email} />
-                <Detail label="Admin login" value="Primary BUSINESS_ADMIN" />
+                <Detail label="Admin email" value={business.adminEmail || "-"} />
+                <Detail label="Giris sifresi" value={business.adminPassword || "-"} />
+                <Detail
+                  label="Sifre degisim"
+                  value={formatDateTime(business.adminPasswordChangedAt)}
+                />
                 <Detail label="Domain" value={business.domain ?? "Not set"} />
                 <Detail label="Status" value={business.domainStatus} />
               </dl>
@@ -113,4 +118,21 @@ function Detail({ label, value }: { label: string; value: string }) {
       <dd className="font-medium text-slate-900">{value}</dd>
     </div>
   );
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }

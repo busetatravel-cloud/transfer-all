@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { getSupabaseConfig } from "@/lib/supabase-config";
+import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessAnalyticsEventRecord = {
   id: string;
@@ -80,9 +80,7 @@ export async function recordBusinessAnalyticsEvent(
     createdAt: nowIso(),
   };
 
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(`/business_analytics_events`, {
       method: "POST",
       body: JSON.stringify({
@@ -112,9 +110,7 @@ export async function listBusinessAnalyticsEvents(businessId: string) {
     return [];
   }
 
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
       `/business_analytics_events?select=id,business_id,event_name,page_path,referrer,visitor_id,created_at&business_id=eq.${encodeURIComponent(
         safeBusinessId,

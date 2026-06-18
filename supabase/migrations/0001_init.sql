@@ -35,8 +35,6 @@ create table if not exists businesses (
   updated_at timestamptz not null default now()
 );
 
-create unique index if not exists uniq_businesses_email_lower
-  on businesses (lower(email));
 create unique index if not exists uniq_businesses_domain_lower
   on businesses (lower(domain));
 
@@ -155,11 +153,11 @@ create table if not exists business_locales (
 create or replace function create_business_with_admin(
   p_name text,
   p_email text,
+  p_admin_email text,
+  p_admin_password_hash text,
   p_phone text default null,
   p_whatsapp text default null,
-  p_domain text default null,
-  p_admin_email text,
-  p_admin_password_hash text
+  p_domain text default null
 )
 returns table (
   business_id uuid,
@@ -174,10 +172,10 @@ begin
   if exists (
     select 1
     from businesses
-    where lower(email) = lower(p_email)
-       or (nullif(p_domain, '') is not null and lower(domain) = lower(nullif(p_domain, '')))
+    where nullif(p_domain, '') is not null
+      and lower(domain) = lower(nullif(p_domain, ''))
   ) then
-    raise exception 'Business email or domain already exists';
+    raise exception 'Business domain already exists';
   end if;
 
   insert into businesses (
@@ -194,7 +192,7 @@ begin
     p_phone,
     p_whatsapp,
     nullif(p_domain, ''),
-    case when nullif(p_domain, '') is null then 'pending' else 'pending' end
+    case when nullif(p_domain, '') is null then 'pending'::domain_status else 'pending'::domain_status end
   )
   returning id into new_business_id;
 

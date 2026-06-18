@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { getSession } from "@/lib/auth";
 import { getLandingPath } from "@/lib/platform";
+import { hasSupabaseConnection } from "@/lib/supabase-config";
 
 export default async function LoginPage() {
   const session = await getSession();
+  const supabaseReady = hasSupabaseConnection();
 
   if (session) {
     redirect(getLandingPath(session.role));
@@ -58,29 +60,14 @@ export default async function LoginPage() {
             </p>
             <h2 className="mt-3 text-2xl font-semibold">Panel girisi</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Demo modda hazirlanan ilk cekirdekte login calisir. Supabase
-              baglantisi eklendiginde ayni akis gercek tabloyu kullanir.
+              {supabaseReady
+                ? "Login akisi Supabase users tablosundan calisir ve session gercek kullanici kaydindan uretilir."
+                : "Supabase baglantisi yoksa login calismaz. Baglanti aktif oldugunda ayni form gercek users tablosuna gider."}
             </p>
           </div>
 
           <div className="mt-6">
             <LoginForm />
-          </div>
-
-          <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm font-semibold text-slate-900">Demo hesaplar</p>
-            <div className="mt-3 grid gap-3 text-sm text-slate-600">
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="font-medium text-slate-900">SUPER_ADMIN</p>
-                <p>Email: super@busetatransfer.com</p>
-                <p>Password: superadmin123</p>
-              </div>
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="font-medium text-slate-900">BUSINESS_ADMIN</p>
-                <p>Email: demo@busetatransfer.com</p>
-                <p>Password: business123</p>
-              </div>
-            </div>
           </div>
         </section>
       </div>

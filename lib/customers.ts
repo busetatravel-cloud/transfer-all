@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { getSupabaseConfig } from "@/lib/supabase-config";
+import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessCustomerRecord = {
   id: string;
@@ -72,9 +72,7 @@ export async function listBusinessCustomers(businessId: string) {
     return [];
   }
 
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
       `/business_customers?select=id,business_id,full_name,email,phone,source,notes,active,created_at,updated_at&business_id=eq.${encodeURIComponent(
         safeBusinessId,
@@ -116,9 +114,7 @@ export async function createBusinessCustomer(
     updatedAt: nowIso(),
   };
 
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(`/business_customers`, {
       method: "POST",
       body: JSON.stringify({

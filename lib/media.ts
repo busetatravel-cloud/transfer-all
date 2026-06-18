@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { getSupabaseConfig } from "@/lib/supabase-config";
+import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessMediaAssetRecord = {
   id: string;
@@ -92,9 +92,7 @@ export function buildMediaPlaceholderAsset(
 }
 
 export async function listBusinessMediaAssets(businessId: string) {
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
       `/business_media_assets?select=id,business_id,kind,source_url,storage_path,alt_text,status,sort_order,created_at,updated_at&business_id=eq.${encodeURIComponent(
         businessId,
@@ -131,9 +129,7 @@ export async function createBusinessMediaAsset(
     updatedAt: nowIso(),
   };
 
-  const config = getSupabaseConfig();
-
-  if (config) {
+  if (hasSupabaseConnection()) {
     const response = await supabaseFetch(`/business_media_assets`, {
       method: "POST",
       body: JSON.stringify({

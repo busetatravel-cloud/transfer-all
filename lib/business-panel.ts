@@ -3,13 +3,16 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import {
   getBusinessById,
+  updateBusinessAdminPasswordRecord,
+  updateBusinessOwnDomainRecord,
   updateBusinessRecord,
   type BusinessRecord,
 } from "@/lib/business";
 import {
   type BusinessRequestRecord,
 } from "@/lib/requests";
-import { getSupabaseConfig } from "@/lib/supabase-config";
+import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
+import { normalizeDomain } from "@/lib/platform";
 
 export type BusinessProfileRecord = {
   businessId: string;
@@ -92,6 +95,8 @@ export type BusinessPanelData = {
 
 export type BusinessPanelSection =
   | "business"
+  | "domain"
+  | "password"
   | "logo"
   | "hero"
   | "service"
@@ -408,9 +413,8 @@ export async function getBusinessPanelData(
   businessId: string,
 ): Promise<BusinessPanelData> {
   const business = await getBusinessById(businessId);
-  const config = getSupabaseConfig();
 
-  if (!config) {
+  if (!hasSupabaseConnection()) {
     const demo = getDemoPanel(businessId);
     return buildPanelResponse(demo, business);
   }
@@ -508,9 +512,7 @@ export async function updateBusinessPanelSection(
   businessId: string,
   payload: PanelUpdate,
 ) {
-  const config = getSupabaseConfig();
-
-  if (!config) {
+  if (!hasSupabaseConnection()) {
     const demo = getDemoPanel(businessId);
 
     switch (payload.section) {
@@ -527,6 +529,25 @@ export async function updateBusinessPanelSection(
           logoUrl: currentBusiness.logoUrl ?? "",
         });
         return buildPanelResponse(demo, business);
+      }
+      case "domain": {
+        const business = await updateBusinessOwnDomainRecord(
+          businessId,
+          String(payload.domain ?? ""),
+        );
+        return buildPanelResponse(demo, business);
+      }
+      case "password": {
+        const currentBusiness = await getBusinessById(businessId);
+        if (!currentBusiness) {
+          throw new Error("Business bulunamadi.");
+        }
+        await updateBusinessAdminPasswordRecord(
+          businessId,
+          String(payload.userId ?? ""),
+          String(payload.newPassword ?? ""),
+        );
+        return buildPanelResponse(demo, currentBusiness);
       }
       case "logo": {
         return await updateBusinessLogoDemo(businessId, String(payload.logoUrl ?? ""));
@@ -596,6 +617,65 @@ export async function updateBusinessPanelSection(
 
       if (!response?.ok) {
         throw new Error("Firma bilgileri guncellenemedi.");
+      }
+
+      return await getBusinessPanelData(businessId);
+    }
+    case "domain": {
+      const domain = normalizeDomain(String(payload.domain ?? ""));
+      const existing = domain
+        ? await readRows(
+            `/businesses?select=id&domain=eq.${encodeURIComponent(domain)}&limit=1`,
+          )
+        : [];
+
+      if (existing[0] && String(existing[0].id ?? "") !== businessId) {
+        throw new Error("Bu domain zaten kullanılıyor.");
+      }
+
+      const response = await supabaseFetch(
+        `/businesses?id=eq.${encodeURIComponent(businessId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            domain: domain || null,
+            domain_status: "pending",
+            updated_at: nowIso(),
+          }),
+        },
+      );
+
+      if (!response?.ok) {
+        throw new Error("Domain kaydedilemedi.");
+      }
+
+      return await getBusinessPanelData(businessId);
+    }
+    case "password": {
+      const userId = String(payload.userId ?? "");
+      const newPassword = String(payload.newPassword ?? "");
+      const confirmPassword = String(payload.confirmPassword ?? "");
+
+      if (!userId) {
+        throw new Error("Kullanici bulunamadi.");
+      }
+
+      if (!newPassword) {
+        throw new Error("Yeni sifre gerekli.");
+      }
+
+      if (newPassword !== confirmPassword) {
+        throw new Error("Sifreler eslesmiyor.");
+      }
+
+      const result = await updateBusinessAdminPasswordRecord(
+        businessId,
+        userId,
+        newPassword,
+      );
+
+      if (!result) {
+        throw new Error("Sifre guncellenemedi.");
       }
 
       return await getBusinessPanelData(businessId);
@@ -718,7 +798,10 @@ export async function updateBusinessPanelSection(
   }
 
   const tableBySection: Record<
-    Exclude<BusinessPanelSection, "business" | "logo" | "hero" | "seo" | "locale">,
+    Exclude<
+      BusinessPanelSection,
+      "business" | "domain" | "password" | "logo" | "hero" | "seo" | "locale"
+    >,
     string
   > = {
     service: "business_services",

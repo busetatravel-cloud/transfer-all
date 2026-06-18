@@ -61,18 +61,62 @@ export function BusinessPanelEditor({ panel }: Props) {
       <Notice state={state} pending={isPending} />
 
       <Grid>
-        <FormCard title="Firma bilgileri" description="Ad, e-posta, telefon ve WhatsApp bilgisini düzenle.">
+        <FormCard title="Firma bilgileri" description="Ad, e-posta, telefon ve WhatsApp bilgisini duzenle.">
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="business" />
             <Field name="name" label="Firma adi" defaultValue={panel.business?.name ?? ""} />
             <Field name="email" label="Firma email" defaultValue={panel.business?.email ?? ""} />
             <Field name="phone" label="Telefon" defaultValue={panel.business?.phone ?? ""} />
             <Field name="whatsapp" label="WhatsApp" defaultValue={panel.business?.whatsapp ?? ""} />
-            <button className={buttonClass} type="submit">Kaydet</button>
+            <button className={buttonClass} type="submit">
+              Kaydet
+            </button>
           </form>
         </FormCard>
 
-        <FormCard title="Logo URL" description="Sadece logo adresini güncelle.">
+        <FormCard title="Domain" description="Kendi domain bilgisini kaydet. Durum otomatik pending olur.">
+          <form className="grid gap-3" onSubmit={submit}>
+            <input type="hidden" name="section" value="domain" />
+            <Field
+              name="domain"
+              label="Domain"
+              defaultValue={panel.business?.domain ?? ""}
+              placeholder="firma.com"
+            />
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Mevcut durum:{" "}
+              <span className="font-medium text-slate-900">
+                {panel.business?.domainStatus ?? "pending"}
+              </span>
+            </div>
+            <button className={buttonClass} type="submit">
+              Domain kaydet
+            </button>
+          </form>
+        </FormCard>
+
+        <FormCard title="Sifre" description="Yeni giris sifresini kaydet. Guncel deger super admin listesinde gorunur.">
+          <form className="grid gap-3" onSubmit={submit}>
+            <input type="hidden" name="section" value="password" />
+            <Field
+              name="newPassword"
+              label="Yeni sifre"
+              type="password"
+              placeholder="Yeni giris sifresi"
+            />
+            <Field
+              name="confirmPassword"
+              label="Sifre tekrar"
+              type="password"
+              placeholder="Tekrar girin"
+            />
+            <button className={buttonClass} type="submit">
+              Sifreyi guncelle
+            </button>
+          </form>
+        </FormCard>
+
+        <FormCard title="Logo URL" description="Sadece logo adresini guncelle.">
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="logo" />
             <Field
@@ -81,21 +125,33 @@ export function BusinessPanelEditor({ panel }: Props) {
               defaultValue={panel.business?.logoUrl ?? ""}
               placeholder="https://..."
             />
-            <button className={buttonClass} type="submit">Kaydet</button>
+            <button className={buttonClass} type="submit">
+              Kaydet
+            </button>
           </form>
         </FormCard>
 
-        <FormCard title="Hero alanı" description="Ana sayfa başlığı, alt metin ve buton yazısı.">
+        <FormCard title="Hero alani" description="Ana sayfa basligi, alt metin ve buton yazisi.">
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="hero" />
             <Field name="heroTitle" label="Hero baslik" defaultValue={panel.profile.heroTitle} />
-            <Field name="heroSubtitle" label="Hero alt metin" defaultValue={panel.profile.heroSubtitle} />
-            <Field name="heroButtonText" label="Buton yazisi" defaultValue={panel.profile.heroButtonText} />
-            <button className={buttonClass} type="submit">Kaydet</button>
+            <Field
+              name="heroSubtitle"
+              label="Hero alt metin"
+              defaultValue={panel.profile.heroSubtitle}
+            />
+            <Field
+              name="heroButtonText"
+              label="Buton yazisi"
+              defaultValue={panel.profile.heroButtonText}
+            />
+            <button className={buttonClass} type="submit">
+              Kaydet
+            </button>
           </form>
         </FormCard>
 
-        <FormCard title="SEO" description="Temel meta başlık ve açıklama.">
+        <FormCard title="SEO" description="Temel meta baslik ve aciklama.">
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="seo" />
             <Field name="metaTitle" label="Meta baslik" defaultValue={panel.seo.metaTitle} />
@@ -104,11 +160,13 @@ export function BusinessPanelEditor({ panel }: Props) {
               label="Meta aciklama"
               defaultValue={panel.seo.metaDescription}
             />
-            <button className={buttonClass} type="submit">Kaydet</button>
+            <button className={buttonClass} type="submit">
+              Kaydet
+            </button>
           </form>
         </FormCard>
 
-        <FormCard title="Dil kaydi" description="Temel dil yapısını oluştur.">
+        <FormCard title="Dil kaydi" description="Temel dil yapisini olustur.">
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="locale" />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -120,7 +178,9 @@ export function BusinessPanelEditor({ panel }: Props) {
               <Check name="published" label="Yayinda" />
               <Check name="translationComplete" label="Ceviri tamam" />
             </div>
-            <button className={buttonClass} type="submit">Kaydet</button>
+            <button className={buttonClass} type="submit">
+              Kaydet
+            </button>
           </form>
         </FormCard>
       </Grid>
@@ -128,7 +188,7 @@ export function BusinessPanelEditor({ panel }: Props) {
       <Grid>
         <CollectionCard
           title="Hizmetler"
-          description="Kısa hizmet kayıtları."
+          description="Kisa hizmet kayitlari."
           section="service"
           items={panel.services}
           submit={submit}
@@ -141,14 +201,14 @@ export function BusinessPanelEditor({ panel }: Props) {
         />
 
         <CollectionCard
-          title="Araçlar"
-          description="Araç kategorileri."
+          title="Araclar"
+          description="Arac kategorileri."
           section="vehicle"
           items={panel.vehicles}
           submit={submit}
           fields={
             <>
-              <Field name="title" label="Araç adi" placeholder="VIP Van" />
+              <Field name="title" label="Arac adi" placeholder="VIP Van" />
               <Field name="description" label="Aciklama" placeholder="..." />
             </>
           }
@@ -156,7 +216,7 @@ export function BusinessPanelEditor({ panel }: Props) {
 
         <CollectionCard
           title="Rotalar"
-          description="Popüler transfer rotaları."
+          description="Populer transfer rotalari."
           section="route"
           items={panel.routes}
           submit={submit}
@@ -170,7 +230,7 @@ export function BusinessPanelEditor({ panel }: Props) {
 
         <CollectionCard
           title="Blog"
-          description="Basit yazı kaydı."
+          description="Basit yazi kaydi."
           section="blog"
           items={panel.blogs}
           submit={submit}
@@ -213,20 +273,20 @@ function CollectionCard({
       <form className="grid gap-3" onSubmit={submit}>
         <input type="hidden" name="section" value={section} />
         {fields}
-        <button className={buttonClass} type="submit">Ekle</button>
+        <button className={buttonClass} type="submit">
+          Ekle
+        </button>
       </form>
       <div className="mt-4 grid gap-2">
         {items.length ? (
           items.map((item) => (
             <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div className="font-medium text-slate-900">{item.title}</div>
-              <div className="text-sm text-slate-600">
-                {item.description ?? item.excerpt ?? ""}
-              </div>
+              <div className="text-sm text-slate-600">{item.description ?? item.excerpt ?? ""}</div>
             </div>
           ))
         ) : (
-          <p className="text-sm text-slate-500">Henüz kayıt yok.</p>
+          <p className="text-sm text-slate-500">Henuz kayit yok.</p>
         )}
       </div>
     </FormCard>
@@ -262,11 +322,13 @@ function Field({
   label,
   defaultValue,
   placeholder,
+  type = "text",
 }: {
   name: string;
   label: string;
   defaultValue?: string;
   placeholder?: string;
+  type?: string;
 }) {
   return (
     <label className="grid gap-2">
@@ -276,6 +338,7 @@ function Field({
         name={name}
         defaultValue={defaultValue}
         placeholder={placeholder}
+        type={type}
       />
     </label>
   );
@@ -302,9 +365,7 @@ function Notice({ state, pending }: { state: SaveState; pending: boolean }) {
         : "border-slate-200 bg-white text-slate-700";
 
   return (
-    <div className={`rounded-[24px] border px-5 py-4 text-sm ${tone}`}>
-      {state.message}
-    </div>
+    <div className={`rounded-[24px] border px-5 py-4 text-sm ${tone}`}>{state.message}</div>
   );
 }
 

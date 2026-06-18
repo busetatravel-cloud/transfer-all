@@ -52,8 +52,14 @@ export async function POST(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Business olusturulamadi.";
+    const status =
+      /zaten kullanılıyor|gerekli|yanıtı eksik|domain already exists|admin email already exists/i.test(
+        message,
+      )
+        ? 400
+        : 500;
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status });
   }
 }
 

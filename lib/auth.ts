@@ -19,11 +19,12 @@ export type BusinessSessionPayload = SessionPayload & {
 };
 
 export async function resolveAuthRecord(email: string) {
-  return findUserByEmail(email);
+  return findUserByEmail(email.trim().toLowerCase());
 }
 
 export async function authenticate(email: string, password: string) {
-  const record = await resolveAuthRecord(email);
+  const normalizedEmail = email.trim().toLowerCase();
+  const record = await resolveAuthRecord(normalizedEmail);
 
   if (!record || !record.active) {
     return null;
@@ -41,7 +42,7 @@ export async function authenticate(email: string, password: string) {
     userId: record.id,
     role: record.role,
     businessId: record.businessId,
-    email: record.email,
+    email: record.email.toLowerCase(),
   } satisfies SessionPayload;
 }
 

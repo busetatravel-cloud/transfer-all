@@ -13,8 +13,8 @@ export function LoginForm() {
   const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [state, setState] = useState<LoginState>({ error: null });
-  const [email, setEmail] = useState("super@busetatransfer.com");
-  const [password, setPassword] = useState("superadmin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -22,13 +22,22 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      let response: Response;
+
+      try {
+        response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        setState({
+          error: "Sunucuya baglanilamadi. Lutfen tekrar deneyin.",
+        });
+        return;
+      }
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as

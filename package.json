@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:super-admin": "node supabase/seed-super-admin.mjs",
+    "test:business-create": "node --test supabase/tests/create-business-flow.test.mjs"
   },
   "dependencies": {
     "next": "16.2.9",

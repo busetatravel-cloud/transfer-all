@@ -47,6 +47,8 @@ export async function PATCH(request: Request) {
     typeof section !== "string" ||
     ![
       "business",
+      "domain",
+      "password",
       "logo",
       "hero",
       "service",
@@ -73,6 +75,18 @@ export async function PATCH(request: Request) {
             phone: toStringValue(body?.phone),
             whatsapp: toStringValue(body?.whatsapp),
           }
+        : section === "domain"
+          ? {
+              section,
+              domain: toStringValue(body?.domain),
+            }
+        : section === "password"
+          ? {
+              section,
+              userId: auth.session.userId,
+              newPassword: toStringValue(body?.newPassword),
+              confirmPassword: toStringValue(body?.confirmPassword),
+            }
         : section === "logo"
           ? {
               section,
