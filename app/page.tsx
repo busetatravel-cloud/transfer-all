@@ -1,12 +1,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { redirect, notFound } from "next/navigation";
-import { PublicSiteShell, ContentCard, PanelSection, CardGrid } from "@/components/public-site-shell";
+import { notFound, redirect } from "next/navigation";
+import {
+  CardGrid,
+  ContentCard,
+  EmptyState,
+  MediaFrame,
+  PanelSection,
+  PublicSiteShell,
+} from "@/components/public-site-shell";
 import { getSession } from "@/lib/auth";
 import { getPublicSiteDataByHost } from "@/lib/public-site";
 import { getLandingPath, isPlatformHost, normalizeHost } from "@/lib/platform";
+import {
+  resolveBusinessMediaAltText,
+  resolveBusinessMediaSourceUrl,
+} from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata(): Promise<Metadata> {
   const headerStore = await headers();
@@ -65,7 +79,7 @@ export default async function HomePage() {
             </h1>
             <p className="max-w-2xl text-base leading-8 text-slate-600">
               {panel.profile.heroSubtitle ||
-                "Business’a özel public site çekirdeği. Menü ve içerikler aynı domain içinde kalır."}
+                "Business icin ozel public site. Menuler ve icerikler ayni domain icinde kalir."}
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Link
@@ -78,12 +92,21 @@ export default async function HomePage() {
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
                 href="/contact"
               >
-                İletişim
+                Iletisim
               </Link>
             </div>
           </div>
 
           <div className="grid gap-3 rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+            <MediaFrame
+              imageAlt={resolveBusinessMediaAltText(
+                panel.mediaAssets,
+                "hero",
+                `${business.name} kapak görseli`,
+              )}
+              imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "hero")}
+              label="Ana görsel"
+            />
             <InfoRow label="Business email" value={business.email} />
             <InfoRow label="Telefon" value={business.phone ?? "-"} />
             <InfoRow label="WhatsApp" value={business.whatsapp ?? "-"} />
@@ -94,57 +117,93 @@ export default async function HomePage() {
         <PanelSection
           eyebrow="Hizmetler"
           title="Temel transfer hizmetleri"
-          description="Business panelde tanımlanan içerikler public sitede aynı businessId ile izole edilir."
+          description="Business panelde tanimlanan icerikler public sitede ayni businessId ile izole edilir."
         >
-          <CardGrid>
-            {panel.services.slice(0, 3).map((item) => (
-              <ContentCard
-                key={item.id}
-                href={`/services/${item.slug || item.id}`}
-                title={item.title}
-                description={item.description}
-              />
-            ))}
-          </CardGrid>
+          {panel.services.length ? (
+            <CardGrid>
+              {panel.services.slice(0, 3).map((item) => (
+                <ContentCard
+                  key={item.id}
+                  href={`/services/${item.slug || item.id}`}
+                  title={item.title}
+                  description={item.description}
+                  imageAlt={item.title}
+                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "service_cover")}
+                />
+              ))}
+            </CardGrid>
+          ) : (
+            <EmptyState
+              title="Hizmet yok"
+              description="Bu business icin henuz hizmet kaydi girilmedi."
+            />
+          )}
         </PanelSection>
 
-        <PanelSection eyebrow="Araçlar" title="Araç seçenekleri">
-          <CardGrid>
-            {panel.vehicles.slice(0, 3).map((item) => (
-              <ContentCard
-                key={item.id}
-                href={`/vehicles/${item.slug || item.id}`}
-                title={item.title}
-                description={item.description}
-              />
-            ))}
-          </CardGrid>
+        <PanelSection eyebrow="Araclar" title="Arac secenekleri">
+          {panel.vehicles.length ? (
+            <CardGrid>
+              {panel.vehicles.slice(0, 3).map((item) => (
+                <ContentCard
+                  key={item.id}
+                  href={`/vehicles/${item.slug || item.id}`}
+                  title={item.title}
+                  description={item.description}
+                  imageAlt={item.title}
+                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "vehicle_cover")}
+                />
+              ))}
+            </CardGrid>
+          ) : (
+            <EmptyState
+              title="Arac yok"
+              description="Bu business icin henuz arac kaydi girilmedi."
+            />
+          )}
         </PanelSection>
 
-        <PanelSection eyebrow="Rotalar" title="Popüler rotalar">
-          <CardGrid>
-            {panel.routes.slice(0, 3).map((item) => (
-              <ContentCard
-                key={item.id}
-                href={`/routes/${item.slug || item.id}`}
-                title={item.title}
-                description={item.description}
-              />
-            ))}
-          </CardGrid>
+        <PanelSection eyebrow="Rotalar" title="Populer rotalar">
+          {panel.routes.length ? (
+            <CardGrid>
+              {panel.routes.slice(0, 3).map((item) => (
+                <ContentCard
+                  key={item.id}
+                  href={`/routes/${item.slug || item.id}`}
+                  title={item.title}
+                  description={item.description}
+                  imageAlt={item.title}
+                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "route_cover")}
+                />
+              ))}
+            </CardGrid>
+          ) : (
+            <EmptyState
+              title="Rota yok"
+              description="Bu business icin henuz rota kaydi girilmedi."
+            />
+          )}
         </PanelSection>
 
-        <PanelSection eyebrow="Blog" title="Son yazılar">
-          <CardGrid>
-            {panel.blogs.slice(0, 3).map((item) => (
-              <ContentCard
-                key={item.id}
-                href={`/blog/${item.slug || item.id}`}
-                title={item.title}
-                description={item.excerpt || item.content || "Blog yazısı"}
-              />
-            ))}
-          </CardGrid>
+        <PanelSection eyebrow="Blog" title="Son yazilar">
+          {panel.blogs.length ? (
+            <CardGrid>
+              {panel.blogs.slice(0, 3).map((item) => (
+                <ContentCard
+                  key={item.id}
+                  href={`/blog/${item.slug || item.id}`}
+                  title={item.title}
+                  description={item.excerpt || item.content || "Blog yazisi"}
+                  imageAlt={item.title}
+                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "blog_cover")}
+                />
+              ))}
+            </CardGrid>
+          ) : (
+            <EmptyState
+              title="Blog yok"
+              description="Bu business icin henuz blog yazisi girilmedi."
+            />
+          )}
         </PanelSection>
       </section>
     </PublicSiteShell>

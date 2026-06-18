@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getActiveBusinessByDomain } from "@/lib/business";
+import { getBusinessById, getActiveBusinessByDomain } from "@/lib/business";
 import { createBusinessRequest } from "@/lib/requests";
 import { isPlatformHost, normalizeHost } from "@/lib/platform";
 
@@ -9,21 +9,20 @@ function getRequestHost(request: Request) {
   return normalizeHost(host);
 }
 
+async function resolvePreviewBusiness(businessId: string) {
+  if (process.env.NODE_ENV !== "development") {
+    return null;
+  }
+
+  return getBusinessById(businessId);
+}
+
 export async function POST(request: Request) {
   const host = getRequestHost(request);
-
-  if (!host || isPlatformHost(host)) {
-    return NextResponse.json({ error: "Not found." }, { status: 404 });
-  }
-
-  const business = await getActiveBusinessByDomain(host);
-
-  if (!business) {
-    return NextResponse.json({ error: "Not found." }, { status: 404 });
-  }
-
   const body = (await request.json().catch(() => null)) as
     | {
+        businessId?: string;
+        previewBusinessId?: string;
         customerName?: string;
         phone?: string;
         email?: string;
@@ -33,6 +32,8 @@ export async function POST(request: Request) {
 
   const customerName = body?.customerName?.trim() ?? "";
   const message = body?.message?.trim() ?? "";
+  const businessId = body?.businessId?.trim() ?? "";
+  const previewBusinessId = body?.previewBusinessId?.trim() ?? "";
 
   if (!customerName || !message) {
     return NextResponse.json(
@@ -41,11 +42,56 @@ export async function POST(request: Request) {
     );
   }
 
-  const requestRecord = await createBusinessRequest(business.id, {
+  if (host && !isPlatformHost(host)) {
+    const business = await getActiveBusinessByDomain(host);
+
+    if (!business) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+
+    if (businessId && businessId !== business.id) {
+      return NextResponse.json(
+        { error: "Business uyumsuz." },
+        { status: 400 },
+      );
+    }
+
+    const requestRecord = await createBusinessRequest(business.id, {
+      customerName,
+      phone: body?.phone?.trim() ?? "",
+      email: body?.email?.trim() ?? "",
+      message,
+      source: "web",
+      bookingStatus: "Bekliyor",
+    });
+
+    return NextResponse.json({
+      ok: true,
+      requestId: requestRecord.id,
+    });
+  }
+
+  const previewBusiness =
+    previewBusinessId ? await resolvePreviewBusiness(previewBusinessId) : null;
+
+  if (!previewBusiness) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
+  if (businessId && businessId !== previewBusiness.id) {
+    return NextResponse.json(
+      { error: "Business uyumsuz." },
+      { status: 400 },
+    );
+  }
+
+  const requestRecord = await createBusinessRequest(previewBusiness.id, {
     customerName,
     phone: body?.phone?.trim() ?? "",
     email: body?.email?.trim() ?? "",
     message,
+    source: "web",
+    bookingStatus: "Bekliyor",
   });
 
   return NextResponse.json({

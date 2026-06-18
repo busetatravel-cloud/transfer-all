@@ -11,15 +11,15 @@ export type SeoHreflangLink = {
 };
 
 function resolveBaseDomain(business: BusinessRecord, seo: BusinessSeoRecord) {
-  const canonicalDomain = normalizeDomain(seo.canonicalUrl);
   const businessDomain = normalizeDomain(business.domain);
-
-  if (canonicalDomain && !isReservedPlatformDomain(canonicalDomain)) {
-    return canonicalDomain;
-  }
+  const canonicalDomain = normalizeDomain(seo.canonicalUrl);
 
   if (businessDomain && !isReservedPlatformDomain(businessDomain)) {
     return businessDomain;
+  }
+
+  if (canonicalDomain && !isReservedPlatformDomain(canonicalDomain)) {
+    return canonicalDomain;
   }
 
   return "";

@@ -1,6 +1,27 @@
-import { BusinessPanelEditor } from "@/components/business-panel-editor";
+import Link from "next/link";
 import { requireBusinessSession } from "@/lib/auth";
 import { getBusinessPanelData } from "@/lib/business-panel";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const modules = [
+  { href: "/app/dashboard", title: "Dashboard", description: "Panel ozeti ve moduller." },
+  { href: "/app/company", title: "Company", description: "Firma bilgileri, hero ve logo." },
+  { href: "/app/domain", title: "Domain", description: "Domain baglama ve durum." },
+  { href: "/app/media", title: "Media", description: "Gorsel ve medya yonetimi." },
+  { href: "/app/services", title: "Services", description: "Hizmet CRUD." },
+  { href: "/app/vehicles", title: "Vehicles", description: "Araç CRUD." },
+  { href: "/app/routes", title: "Routes", description: "Rota CRUD." },
+  { href: "/app/blog", title: "Blog", description: "Blog CRUD." },
+  { href: "/app/seo", title: "SEO", description: "Meta alanlari." },
+  { href: "/app/languages", title: "Languages", description: "Dil içerikleri." },
+  { href: "/app/reservations", title: "Reservations", description: "Rezervasyonlar." },
+  { href: "/app/operation", title: "Operation", description: "Gunluk operasyon." },
+  { href: "/app/finance", title: "Finance", description: "Tahsilat ve ciro." },
+  { href: "/app/customers", title: "Customers", description: "CRM ve musteri kartlari." },
+  { href: "/app/password", title: "Password", description: "Admin sifresi." },
+];
 
 export default async function BusinessDashboardPage() {
   const session = await requireBusinessSession();
@@ -17,8 +38,7 @@ export default async function BusinessDashboardPage() {
             Business kaydı bulunamadı
           </h1>
           <p className="mt-2 text-sm leading-7 text-slate-600">
-            Bu oturum için eşleşen business verisi yok. Panel, yalnızca kendi
-            businessId kaydını gösterir.
+            Bu oturum için eşleşen business verisi yok. Panel, yalnızca kendi businessId kaydını gösterir.
           </p>
         </article>
       </section>
@@ -34,68 +54,37 @@ export default async function BusinessDashboardPage() {
         <div className="mt-3 grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-              {panel.business?.name ?? "Business"}
+              {panel.business.name}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
-              Sadece kendi businessId kaydini duzenleyen sade panel çekirdeği.
-              Veri, session baglantisiyla sunucu tarafinda ayrıştırılır.
+              Modül kartından ilgili sayfaya geç. Her bölüm kendi route sayfasında açılır.
             </p>
           </div>
           <dl className="grid gap-3 text-sm text-slate-600">
-            <Detail label="Session email" value={session.email} />
-            <Detail label="Business email" value={panel.business?.email ?? "-"} />
-            <Detail label="Business domain" value={panel.business?.domain ?? "Not set"} />
-            <Detail label="Logo URL" value={panel.business?.logoUrl ?? "Empty"} />
+            <Detail label="Business email" value={panel.business.email} />
+            <Detail label="Domain" value={panel.business.domain ?? "Not set"} />
+            <Detail label="Session" value={session.email} />
           </dl>
         </div>
       </article>
 
-      <BusinessPanelEditor panel={panel} />
-
-      <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Talepler
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-              Public form kayıtları
-            </h2>
-          </div>
-          <p className="text-sm text-slate-600">
-            Kayıtlar yalnızca bu businessId için gösterilir.
-          </p>
-        </div>
-
-        <div className="mt-5 grid gap-3">
-          {panel.requests.length ? (
-            panel.requests.map((request) => (
-              <div
-                key={request.id}
-                className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[0.9fr_1.1fr]"
-              >
-                <div className="grid gap-1 text-sm">
-                  <p className="font-semibold text-slate-900">
-                    {request.customerName}
-                  </p>
-                  <p className="text-slate-600">{request.phone ?? "-"}</p>
-                  <p className="text-slate-600">{request.email ?? "-"}</p>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {request.status}
-                  </p>
-                </div>
-                <p className="text-sm leading-7 text-slate-600">
-                  {request.message}
-                </p>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-              Henüz gelen talep yok.
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {modules.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300"
+          >
+            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Module
             </div>
-          )}
-        </div>
-      </article>
+            <div className="mt-3 text-xl font-semibold tracking-tight text-slate-950">
+              {item.title}
+            </div>
+            <div className="mt-2 text-sm leading-6 text-slate-600">{item.description}</div>
+          </Link>
+        ))}
+      </div>
     </section>
   );
 }

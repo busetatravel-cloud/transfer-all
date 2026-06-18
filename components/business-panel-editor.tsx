@@ -1,11 +1,38 @@
+/* eslint-disable @next/next/no-img-element */
+
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type FormEvent, type ReactNode } from "react";
+import {
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type { BusinessPanelData } from "@/lib/business-panel";
+import {
+  PAYMENT_STATUS_OPTIONS,
+  formatPaymentStatusLabel,
+} from "@/lib/request-statuses";
 
 type Props = {
   panel: BusinessPanelData;
+  module?:
+    | "dashboard"
+    | "company"
+    | "domain"
+    | "media"
+    | "services"
+    | "vehicles"
+    | "routes"
+    | "blog"
+    | "seo"
+    | "languages"
+    | "reservations"
+    | "operation"
+    | "finance"
+    | "customers"
+    | "password";
 };
 
 type SaveState = {
@@ -13,110 +40,538 @@ type SaveState = {
   message: string;
 };
 
-export function BusinessPanelEditor({ panel }: Props) {
+type CollectionItem = {
+  id: string;
+  title?: string;
+  description?: string;
+  slug?: string;
+  excerpt?: string;
+  content?: string;
+  code?: string;
+  name?: string;
+  active?: boolean;
+  published?: boolean;
+  translationComplete?: boolean;
+};
+
+type CollectionSection = "service" | "vehicle" | "route" | "blog" | "locale";
+
+type PreviewViewport = "desktop" | "tablet" | "phone";
+
+type MediaSlotKey =
+  | "logo"
+  | "hero"
+  | "service_cover"
+  | "vehicle_cover"
+  | "vehicle_interior"
+  | "vehicle_exterior"
+  | "vehicle_trunk"
+  | "vehicle_seat"
+  | "route_cover"
+  | "blog_cover";
+
+const MEDIA_SLOT_FIELDS: Array<{
+  kind: MediaSlotKey;
+  label: string;
+  description: string;
+}> = [
+  { kind: "logo", label: "Logo", description: "Marka logosu ve kurumsal kimlik." },
+  { kind: "hero", label: "Hero", description: "Ana sayfa kapak görseli." },
+  { kind: "service_cover", label: "Hizmet", description: "Hizmet kapak görseli." },
+  { kind: "vehicle_cover", label: "Araç kapak", description: "Araç listesi için kapak." },
+  { kind: "vehicle_interior", label: "İç görünüm", description: "Araç iç fotoğrafı." },
+  { kind: "vehicle_exterior", label: "Dış görünüm", description: "Araç dış fotoğrafı." },
+  { kind: "vehicle_trunk", label: "Bagaj", description: "Bagaj fotoğrafı." },
+  { kind: "vehicle_seat", label: "Koltuk", description: "Koltuk düzeni." },
+  { kind: "route_cover", label: "Rota", description: "Rota kapak görseli." },
+  { kind: "blog_cover", label: "Blog", description: "Blog kapak görseli." },
+];
+
+const BOOKING_STATUS_OPTIONS = [
+  "Bekliyor",
+  "Onaylandı",
+  "Şoför Atandı",
+  "Tamamlandı",
+  "İptal",
+];
+
+function formatBookingStatusLabel(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized) {
+    return "Bekliyor";
+  }
+
+  if (BOOKING_STATUS_OPTIONS.includes(normalized)) {
+    return normalized;
+  }
+
+  const map: Record<string, string> = {
+    new: "Bekliyor",
+    in_progress: "Şoför Atandı",
+    completed: "Tamamlandı",
+    archived: "İptal",
+  };
+
+  return map[normalized.toLowerCase()] ?? "Bekliyor";
+}
+
+type OperationFilter = "today" | "tomorrow" | "week" | "future";
+
+type OperationView = BusinessPanelData["requests"][number];
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function compareOperations(left: OperationView, right: OperationView) {
+  const leftDate = `${left.travelDate ?? ""} ${left.travelTime ?? ""}`;
+  const rightDate = `${right.travelDate ?? ""} ${right.travelTime ?? ""}`;
+  return leftDate.localeCompare(rightDate) || right.createdAt.localeCompare(left.createdAt);
+}
+
+function filterOperations(
+  operations: OperationView[],
+  filter: OperationFilter,
+  todayKey: string,
+) {
+  const tomorrowKey = toDateKey(addDays(new Date(), 1));
+  const weekEnd = addDays(new Date(), 6);
+  const weekEndKey = toDateKey(weekEnd);
+
+  return operations.filter((operation) => {
+    const dateKey = operation.travelDate?.trim() ?? "";
+
+    if (!dateKey) {
+      return false;
+    }
+
+    if (filter === "today") {
+      return dateKey === todayKey;
+    }
+
+    if (filter === "tomorrow") {
+      return dateKey === tomorrowKey;
+    }
+
+    if (filter === "week") {
+      return dateKey >= todayKey && dateKey <= weekEndKey;
+    }
+
+    return dateKey > weekEndKey;
+  });
+}
+
+function buildOperationSummary(operations: OperationView[], todayKey: string) {
+  const todayOperations = operations.filter((item) => item.travelDate?.trim() === todayKey);
+  return {
+    today: todayOperations.length,
+    assigned: todayOperations.filter((item) => item.assignedVehicle || item.driverName).length,
+    waiting: todayOperations.filter((item) => item.bookingStatus === "Bekliyor").length,
+    completed: todayOperations.filter((item) => item.bookingStatus === "Tamamlandı").length,
+  };
+}
+
+type CustomerView = BusinessPanelData["customers"][number] & {
+  reservationCount: number;
+  totalSpend: number;
+  history: Array<{
+    id: string;
+    label: string;
+    amount: number;
+    status: string;
+  }>;
+};
+
+function normalizeContact(value: string | null | undefined) {
+  const safe = String(value ?? "").trim();
+  return safe ? safe.toLowerCase() : "";
+}
+
+function buildCustomerViews(panel: BusinessPanelData) {
+  return panel.customers.map((customer) => {
+    const emailKey = normalizeContact(customer.email);
+    const phoneKey = normalizeContact(customer.phone);
+    const matchedRequests = panel.requests.filter((request) => {
+      const requestEmail = normalizeContact(request.email);
+      const requestPhone = normalizeContact(request.phone);
+
+      return (
+        (emailKey && requestEmail && requestEmail === emailKey) ||
+        (phoneKey && requestPhone && requestPhone === phoneKey)
+      );
+    });
+
+    const history = matchedRequests.map((request) => ({
+      id: request.id,
+      label: `${request.travelDate ?? "-"} ${request.origin ?? "-"} → ${request.destination ?? "-"}`,
+      amount: Number(request.totalAmount ?? 0),
+      status: formatBookingStatusLabel(request.bookingStatus),
+    }));
+
+    return {
+      ...customer,
+      reservationCount: matchedRequests.length,
+      totalSpend: matchedRequests.reduce(
+        (total, request) => total + Number(request.totalAmount ?? 0),
+        0,
+      ),
+      history,
+    } satisfies CustomerView;
+  });
+}
+
+type FinanceSummary = {
+  totalTurnover: number;
+  depositCollected: number;
+  remainingCollection: number;
+  collectedInVehicle: number;
+};
+
+function toMoney(value: number | null | undefined) {
+  return Number.isFinite(Number(value ?? 0)) ? Number(value ?? 0) : 0;
+}
+
+function buildFinanceSummary(operations: OperationView[]) {
+  return operations.reduce<FinanceSummary>(
+    (summary, request) => {
+      const total = toMoney(request.totalAmount);
+      const deposit = toMoney(request.depositAmount);
+      const remaining = toMoney(request.remainingAmount);
+      const paymentStatus = formatPaymentStatusLabel(request.paymentStatus);
+
+      summary.totalTurnover += total;
+
+      if (paymentStatus === "Kapora Alındı") {
+        summary.depositCollected += deposit || total;
+      }
+
+      if (paymentStatus === "Ödendi") {
+        summary.remainingCollection += remaining || Math.max(total - deposit, 0);
+      }
+
+      if (paymentStatus === "Araçta Tahsil") {
+        summary.collectedInVehicle += remaining || total;
+      }
+
+      return summary;
+    },
+    {
+      totalTurnover: 0,
+      depositCollected: 0,
+      remainingCollection: 0,
+      collectedInVehicle: 0,
+    },
+  );
+}
+
+export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
   const router = useRouter();
   const [state, setState] = useState<SaveState>({
     status: "idle",
     message: "",
   });
   const [isPending, startTransition] = useTransition();
+  const [previewViewport, setPreviewViewport] =
+    useState<PreviewViewport>("desktop");
+  const [operationFilter, setOperationFilter] =
+    useState<OperationFilter>("today");
+  const previewUrl = panel.business?.domain ? `https://${panel.business.domain}` : null;
+  const todayKey = toDateKey(new Date());
+  const operations = panel.requests.slice().sort(compareOperations);
+  const filteredOperations = filterOperations(operations, operationFilter, todayKey);
+  const operationSummary = buildOperationSummary(operations, todayKey);
+  const customerViews = buildCustomerViews(panel).sort(
+    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+  );
+  const financeSummary = buildFinanceSummary(operations);
+  const show = (...modules: Array<NonNullable<Props["module"]>>) =>
+    module === "dashboard" ? true : modules.includes(module);
+
+  async function sendPayload(
+    payload: Record<string, string | boolean | number | undefined>,
+    successMessage: string,
+  ) {
+    setState({ status: "saving", message: "Kaydediliyor..." });
+
+    try {
+      const response = await fetch("/api/business/panel", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+
+        setState({
+          status: "error",
+          message: body?.error ?? "Kaydetme basarisiz.",
+        });
+        return false;
+      }
+    } catch {
+      setState({
+        status: "error",
+        message: "Baglanti kurulamadı. Lütfen tekrar deneyin.",
+      });
+      return false;
+    }
+
+    setState({
+      status: "saved",
+      message: successMessage,
+    });
+
+    startTransition(() => {
+      router.refresh();
+    });
+
+    return true;
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
     const body = Object.fromEntries(formData.entries());
-    setState({ status: "saving", message: "Kaydediliyor..." });
+    await sendPayload(body as Record<string, string>, "Kaydedildi.");
+  }
 
-    const response = await fetch("/api/business/panel", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  async function deleteRecord(section: CollectionSection, recordId: string) {
+    const confirmed = window.confirm("Bu kayit silinecek. Devam etmek istiyor musunuz?");
 
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
+    if (!confirmed) {
+      return;
+    }
+
+    await sendPayload(
+      {
+        section,
+        action: "delete",
+        recordId,
+      },
+      "Silindi.",
+    );
+  }
+
+  function openPreview() {
+    if (!previewUrl) {
       setState({
         status: "error",
-        message: payload?.error ?? "Kaydetme basarisiz.",
+        message: "Onizleme icin domain gerekli.",
       });
       return;
     }
 
-    setState({
-      status: "saved",
-      message: "Kaydedildi.",
-    });
-    form.reset();
+    window.open(previewUrl, "_blank", "noopener,noreferrer");
+  }
 
-    startTransition(() => {
-      router.refresh();
-    });
+  function previewWidthClass() {
+    if (previewViewport === "tablet") {
+      return "max-w-[820px]";
+    }
+
+    if (previewViewport === "phone") {
+      return "max-w-[390px]";
+    }
+
+    return "max-w-none";
   }
 
   return (
     <section className="grid gap-6">
       <Notice state={state} pending={isPending} />
 
+      <SectionCard
+        className={show("operation") ? "" : "hidden"}
+        title="Canli onizleme"
+        description="Desktop, tablet ve telefon gorunumleri arasinda hizlica gecis yap."
+      >
+        <div className="flex flex-wrap gap-2">
+          <ViewportButton
+            active={previewViewport === "desktop"}
+            onClick={() => setPreviewViewport("desktop")}
+          >
+            Desktop
+          </ViewportButton>
+          <ViewportButton
+            active={previewViewport === "tablet"}
+            onClick={() => setPreviewViewport("tablet")}
+          >
+            Tablet
+          </ViewportButton>
+          <ViewportButton
+            active={previewViewport === "phone"}
+            onClick={() => setPreviewViewport("phone")}
+          >
+            Telefon
+          </ViewportButton>
+          <button
+            className="ml-auto inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={!previewUrl}
+            type="button"
+            onClick={openPreview}
+          >
+            Ayrı sekmede aç
+          </button>
+        </div>
+        <div className={`mt-4 overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 ${previewWidthClass()} mx-auto`}>
+          {previewUrl ? (
+            <iframe
+              className="h-[640px] w-full bg-white"
+              src={previewUrl}
+              title="Business preview"
+            />
+          ) : (
+            <div className="grid min-h-[320px] place-items-center px-6 py-12 text-sm text-slate-500">
+              Onizleme icin domain gerekli.
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        className={show("operation") ? "" : "hidden"}
+        title="Operasyon"
+        description="Rezervasyonlardan gunluk operasyon listesi uretilir. Filtreler businessId icindeki kayitlara uygulanir."
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <SummaryTile label="Bugun" value={String(operationSummary.today)} />
+            <SummaryTile label="Atanan" value={String(operationSummary.assigned)} />
+            <SummaryTile label="Bekleyen" value={String(operationSummary.waiting)} />
+            <SummaryTile label="Tamamlanan" value={String(operationSummary.completed)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <ViewportButton
+              active={operationFilter === "today"}
+              onClick={() => setOperationFilter("today")}
+            >
+              Bugün
+            </ViewportButton>
+            <ViewportButton
+              active={operationFilter === "tomorrow"}
+              onClick={() => setOperationFilter("tomorrow")}
+            >
+              Yarın
+            </ViewportButton>
+            <ViewportButton
+              active={operationFilter === "week"}
+              onClick={() => setOperationFilter("week")}
+            >
+              Bu hafta
+            </ViewportButton>
+            <ViewportButton
+              active={operationFilter === "future"}
+              onClick={() => setOperationFilter("future")}
+            >
+              İleri tarihli
+            </ViewportButton>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="grid gap-3">
+              {filteredOperations.length ? (
+                filteredOperations.map((request) => (
+                  <OperationCard
+                    key={request.id}
+                    request={request}
+                    onSave={sendPayload}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Seçili filtre için operasyon yok.
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-3">
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-950">Pickup listesi</div>
+                <p className="mt-1 text-xs leading-6 text-slate-500">
+                  Saat, rota ve yolcu odakli kompakt gorunum.
+                </p>
+              </div>
+              {filteredOperations.length ? (
+                filteredOperations.map((request) => (
+                  <article
+                    key={`pickup-${request.id}`}
+                    className="grid gap-2 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="grid gap-1">
+                        <div className="font-semibold text-slate-950">
+                          {request.customerName}
+                        </div>
+                        <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                          {request.travelDate ?? "-"} {request.travelTime ?? ""}
+                        </div>
+                      </div>
+                      <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {formatBookingStatusLabel(request.bookingStatus)}
+                      </div>
+                    </div>
+                    <div className="grid gap-1 text-sm text-slate-600">
+                      <div>
+                        {request.origin ?? "-"} &rarr; {request.destination ?? "-"}
+                      </div>
+                      <div>
+                        Yolcu: {request.adults + request.children + request.infants}
+                      </div>
+                      <div>Araç: {request.assignedVehicle ?? request.vehicleName ?? "-"}</div>
+                      <div>Sofor: {request.driverName ?? "-"}</div>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Pickup listesi bos.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
       <Grid>
-        <FormCard title="Firma bilgileri" description="Ad, e-posta, telefon ve WhatsApp bilgisini duzenle.">
+        <SectionCard
+          className={show("company") ? "" : "hidden"}
+          title="Firma bilgileri"
+          description="Ad, e-posta, telefon ve WhatsApp bilgisini duzenle."
+        >
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="business" />
             <Field name="name" label="Firma adi" defaultValue={panel.business?.name ?? ""} />
             <Field name="email" label="Firma email" defaultValue={panel.business?.email ?? ""} />
             <Field name="phone" label="Telefon" defaultValue={panel.business?.phone ?? ""} />
             <Field name="whatsapp" label="WhatsApp" defaultValue={panel.business?.whatsapp ?? ""} />
-            <button className={buttonClass} type="submit">
-              Kaydet
-            </button>
-          </form>
-        </FormCard>
-
-        <FormCard title="Domain" description="Kendi domain bilgisini kaydet. Durum otomatik pending olur.">
-          <form className="grid gap-3" onSubmit={submit}>
-            <input type="hidden" name="section" value="domain" />
-            <Field
-              name="domain"
-              label="Domain"
-              defaultValue={panel.business?.domain ?? ""}
-              placeholder="firma.com"
+            <ActionBar
+              onPreview={openPreview}
+              pending={isPending}
+              previewDisabled={!previewUrl}
             />
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Mevcut durum:{" "}
-              <span className="font-medium text-slate-900">
-                {panel.business?.domainStatus ?? "pending"}
-              </span>
-            </div>
-            <button className={buttonClass} type="submit">
-              Domain kaydet
-            </button>
           </form>
-        </FormCard>
+        </SectionCard>
 
-        <FormCard title="Sifre" description="Yeni giris sifresini kaydet. Guncel deger super admin listesinde gorunur.">
-          <form className="grid gap-3" onSubmit={submit}>
-            <input type="hidden" name="section" value="password" />
-            <Field
-              name="newPassword"
-              label="Yeni sifre"
-              type="password"
-              placeholder="Yeni giris sifresi"
-            />
-            <Field
-              name="confirmPassword"
-              label="Sifre tekrar"
-              type="password"
-              placeholder="Tekrar girin"
-            />
-            <button className={buttonClass} type="submit">
-              Sifreyi guncelle
-            </button>
-          </form>
-        </FormCard>
-
-        <FormCard title="Logo URL" description="Sadece logo adresini guncelle.">
+        <SectionCard
+          className={show("media") ? "" : "hidden"}
+          title="Logo"
+          description="Logo adresini guncelle. Harici URL kullan."
+        >
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="logo" />
             <Field
@@ -125,13 +580,19 @@ export function BusinessPanelEditor({ panel }: Props) {
               defaultValue={panel.business?.logoUrl ?? ""}
               placeholder="https://..."
             />
-            <button className={buttonClass} type="submit">
-              Kaydet
-            </button>
+            <ActionBar
+              onPreview={openPreview}
+              pending={isPending}
+              previewDisabled={!previewUrl}
+            />
           </form>
-        </FormCard>
+        </SectionCard>
 
-        <FormCard title="Hero alani" description="Ana sayfa basligi, alt metin ve buton yazisi.">
+        <SectionCard
+          className={show("company") ? "" : "hidden"}
+          title="Hero alani"
+          description="Ana sayfa basligi, alt metin ve buton yazisi."
+        >
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="hero" />
             <Field name="heroTitle" label="Hero baslik" defaultValue={panel.profile.heroTitle} />
@@ -145,13 +606,19 @@ export function BusinessPanelEditor({ panel }: Props) {
               label="Buton yazisi"
               defaultValue={panel.profile.heroButtonText}
             />
-            <button className={buttonClass} type="submit">
-              Kaydet
-            </button>
+            <ActionBar
+              onPreview={openPreview}
+              pending={isPending}
+              previewDisabled={!previewUrl}
+            />
           </form>
-        </FormCard>
+        </SectionCard>
 
-        <FormCard title="SEO" description="Temel meta baslik ve aciklama.">
+        <SectionCard
+          className={show("seo") ? "" : "hidden"}
+          title="SEO"
+          description="Temel meta baslik ve aciklama."
+        >
           <form className="grid gap-3" onSubmit={submit}>
             <input type="hidden" name="section" value="seo" />
             <Field name="metaTitle" label="Meta baslik" defaultValue={panel.seo.metaTitle} />
@@ -160,150 +627,818 @@ export function BusinessPanelEditor({ panel }: Props) {
               label="Meta aciklama"
               defaultValue={panel.seo.metaDescription}
             />
-            <button className={buttonClass} type="submit">
-              Kaydet
-            </button>
+            <ActionBar
+              onPreview={openPreview}
+              pending={isPending}
+              previewDisabled={!previewUrl}
+            />
           </form>
-        </FormCard>
+        </SectionCard>
 
-        <FormCard title="Dil kaydi" description="Temel dil yapisini olustur.">
-          <form className="grid gap-3" onSubmit={submit}>
-            <input type="hidden" name="section" value="locale" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field name="code" label="Kod" placeholder="tr" />
-              <Field name="name" label="Dil adi" placeholder="Turkce" />
+        <SectionCard
+          className={show("domain") ? "" : "hidden"}
+          title="Domain"
+          description="Business kendi domainini kaydedebilir. Kayit sonrasinda durum pending olur."
+        >
+          <form
+            className="grid gap-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              const formData = new FormData(form);
+              const body = Object.fromEntries(formData.entries());
+              const ok = await sendPayload(
+                {
+                  section: "domain",
+                  domain: String(body.domain ?? ""),
+                },
+                "Domain kaydedildi.",
+              );
+
+              if (ok) {
+                form.reset();
+              }
+            }}
+          >
+            <Field
+              name="domain"
+              label="Domain"
+              defaultValue={panel.business?.domain ?? ""}
+              placeholder="firma.com"
+            />
+            <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <div className="font-medium text-slate-900">
+                Mevcut durum: {panel.business?.domainStatus ?? "pending"}
+              </div>
+              <p className="mt-1 text-xs leading-6 text-slate-500">
+                Public site only opens on active domain.
+              </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Check name="active" label="Aktif" />
-              <Check name="published" label="Yayinda" />
-              <Check name="translationComplete" label="Ceviri tamam" />
-            </div>
-            <button className={buttonClass} type="submit">
-              Kaydet
-            </button>
+            <ActionBar
+              onPreview={openPreview}
+              pending={isPending}
+              previewDisabled={!previewUrl}
+            />
           </form>
-        </FormCard>
+        </SectionCard>
       </Grid>
 
-      <Grid>
-        <CollectionCard
-          title="Hizmetler"
+      <SectionCard
+        className={show("media") ? "" : "hidden"}
+        title="Fotoğraf Yönetimi"
+        description="Upload entegrasyonu şimdilik güvenli placeholder olarak kalır. URL ve alt metin girerek medya alanlarını yönet."
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {MEDIA_SLOT_FIELDS.map((slot) => (
+            <MediaSlotCardV2
+              key={`${slot.kind}-${
+                panel.mediaAssets.find((entry) => entry.kind === slot.kind)?.updatedAt ?? "empty"
+              }`}
+              kind={slot.kind}
+              label={slot.label}
+              description={slot.description}
+              items={panel.mediaAssets}
+              onSave={sendPayload}
+              pending={isPending}
+            />
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        className={show("reservations") ? "" : "hidden"}
+        title="Rezervasyonlar"
+        description="Web sitesinden gelen talepler ve manuel rezervasyonlar aynı businessId altında listelenir."
+      >
+        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+          <form
+            className="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              const formData = new FormData(form);
+              const body = Object.fromEntries(formData.entries());
+              const ok = await sendPayload(
+                {
+                  section: "reservation",
+                  action: "create",
+                  customerName: String(body.customerName ?? ""),
+                  phone: String(body.phone ?? ""),
+                  email: String(body.email ?? ""),
+                  country: String(body.country ?? ""),
+                  language: String(body.language ?? ""),
+                  origin: String(body.origin ?? ""),
+                  destination: String(body.destination ?? ""),
+                  travelDate: String(body.travelDate ?? ""),
+                  travelTime: String(body.travelTime ?? ""),
+                  flightCode: String(body.flightCode ?? ""),
+                  adults: Number(body.adults ?? 0),
+                  children: Number(body.children ?? 0),
+                  infants: Number(body.infants ?? 0),
+                  vehicleCategory: String(body.vehicleCategory ?? ""),
+                  vehicleName: String(body.vehicleName ?? ""),
+                  totalAmount: String(body.totalAmount ?? ""),
+                  depositAmount: String(body.depositAmount ?? ""),
+                  remainingAmount: String(body.remainingAmount ?? ""),
+                  currency: String(body.currency ?? "TRY"),
+                  paymentStatus: String(body.paymentStatus ?? "Ödenmedi"),
+                  notes: String(body.notes ?? ""),
+                  source: "manual",
+                  bookingStatus: String(body.bookingStatus ?? "Bekliyor"),
+                  message: String(body.notes ?? "Manuel rezervasyon kaydı"),
+                },
+                "Rezervasyon kaydedildi.",
+              );
+
+              if (ok) {
+                form.reset();
+              }
+            }}
+          >
+            <input type="hidden" name="section" value="reservation" />
+            <input type="hidden" name="action" value="create" />
+            <input type="hidden" name="source" value="manual" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field name="customerName" label="Müşteri ad soyad" />
+              <Field name="phone" label="Telefon" />
+              <Field name="email" label="Mail" type="email" />
+              <Field name="country" label="Ülke" />
+              <Field name="language" label="Dil" />
+              <Field name="origin" label="Nereden" />
+              <Field name="destination" label="Nereye" />
+              <Field name="travelDate" label="Tarih" type="date" />
+              <Field name="travelTime" label="Saat" type="time" />
+              <Field name="flightCode" label="Uçuş kodu" />
+              <Field name="adults" label="Yetişkin" type="number" defaultValue="1" />
+              <Field name="children" label="Çocuk" type="number" defaultValue="0" />
+              <Field name="infants" label="Bebek" type="number" defaultValue="0" />
+              <Field name="vehicleCategory" label="Araç kategorisi" />
+              <Field name="vehicleName" label="Araç" />
+              <Field name="totalAmount" label="Toplam" type="number" />
+              <Field name="depositAmount" label="Kapora" type="number" />
+              <Field name="remainingAmount" label="Kalan" type="number" />
+              <SelectField
+                label="Para birimi"
+                name="currency"
+                defaultValue="TRY"
+                options={["TRY", "EUR", "USD", "GBP", "AED"]}
+              />
+            </div>
+            <TextArea name="notes" label="Not" placeholder="Ek açıklama" />
+            <SelectField
+              label="Ödeme durumu"
+              name="paymentStatus"
+              defaultValue="Ödenmedi"
+              options={[...PAYMENT_STATUS_OPTIONS]}
+            />
+            <SelectField
+              label="Durum"
+              name="bookingStatus"
+              defaultValue="Bekliyor"
+              options={BOOKING_STATUS_OPTIONS}
+            />
+            <button
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={isPending}
+              type="submit"
+            >
+              Manuel rezervasyon oluştur
+            </button>
+          </form>
+
+          <div className="grid gap-3">
+            {panel.requests.length ? (
+              panel.requests.map((request) => (
+                <article
+                  key={request.id}
+                  className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="grid gap-1">
+                      <div className="font-semibold text-slate-950">
+                        {request.customerName}
+                      </div>
+                      <div className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                        {request.source === "manual" ? "Manuel" : "Web"} /{" "}
+                        {formatBookingStatusLabel(request.bookingStatus)}
+                      </div>
+                    </div>
+                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {request.currency ?? "TRY"}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 text-sm text-slate-600">
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <span>{request.phone ?? "-"}</span>
+                      <span>{request.email ?? "-"}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <span>
+                        {request.origin ?? "-"} → {request.destination ?? "-"}
+                      </span>
+                      <span>
+                        {request.travelDate ?? "-"} {request.travelTime ?? ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <span>
+                        {request.adults} yetişkin, {request.children} çocuk, {request.infants} bebek
+                      </span>
+                      <span>{request.vehicleCategory ?? "-"}</span>
+                      <span>{request.vehicleName ?? "-"}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <span>Toplam: {request.totalAmount ?? 0}</span>
+                      <span>Kapora: {request.depositAmount ?? 0}</span>
+                      <span>Kalan: {request.remainingAmount ?? 0}</span>
+                      <span>Durum: {formatPaymentStatusLabel(request.paymentStatus)}</span>
+                    </div>
+                    {request.flightCode ? <div>Uçuş: {request.flightCode}</div> : null}
+                    {request.notes ? <div>Not: {request.notes}</div> : null}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Henüz rezervasyon yok.
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        className={show("customers") ? "" : "hidden"}
+        title="Müşteriler / CRM"
+        description="Rezervasyonlardan otomatik müşteri kartı oluşur. Aynı telefon veya email mevcut müşteriyle eşleşir."
+      >
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <form
+            className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              const formData = new FormData(form);
+              const body = Object.fromEntries(formData.entries());
+              const ok = await sendPayload(
+                {
+                  section: "customer",
+                  action: "create",
+                  fullName: String(body.fullName ?? ""),
+                  phone: String(body.phone ?? ""),
+                  email: String(body.email ?? ""),
+                  country: String(body.country ?? ""),
+                  language: String(body.language ?? ""),
+                  notes: String(body.notes ?? ""),
+                  source: "manual",
+                },
+                "Musteri kaydedildi.",
+              );
+
+              if (ok) {
+                form.reset();
+              }
+            }}
+          >
+            <input type="hidden" name="section" value="customer" />
+            <input type="hidden" name="action" value="create" />
+            <input type="hidden" name="source" value="manual" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field name="fullName" label="Ad soyad" />
+              <Field name="phone" label="Telefon" />
+              <Field name="email" label="Email" type="email" />
+              <Field name="country" label="Ülke" />
+              <Field name="language" label="Dil" />
+            </div>
+            <TextArea name="notes" label="Not" placeholder="Müşteri notu" />
+            <button
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={isPending}
+              type="submit"
+            >
+              Müşteri oluştur
+            </button>
+          </form>
+
+          <div className="grid gap-3">
+            {customerViews.length ? (
+              customerViews.map((customer) => (
+                <article
+                  key={customer.id}
+                  className="grid gap-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="grid gap-1">
+                      <div className="font-semibold text-slate-950">{customer.fullName}</div>
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                        {customer.phone ?? "-"} / {customer.email ?? "-"}
+                      </div>
+                    </div>
+                    <div className="grid gap-1 text-right text-xs uppercase tracking-[0.2em] text-slate-500">
+                      <span>{customer.country ?? "-"}</span>
+                      <span>{customer.language ?? "-"}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+                    <div>Rezervasyon: {customer.reservationCount}</div>
+                    <div>Toplam harcama: {customer.totalSpend}</div>
+                    <div>Kaynak: {customer.source}</div>
+                  </div>
+
+                  <div className="grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-sm font-semibold text-slate-900">Rezervasyon geçmişi</div>
+                    {customer.history.length ? (
+                      <div className="grid gap-2 text-sm text-slate-600">
+                        {customer.history.map((item) => (
+                          <div key={item.id} className="flex flex-wrap items-center justify-between gap-3">
+                            <span>{item.label}</span>
+                            <span>{item.amount}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">Henüz rezervasyon yok.</p>
+                    )}
+                  </div>
+
+                  <form
+                    className="grid gap-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      const formData = new FormData(event.currentTarget);
+                      const body = Object.fromEntries(formData.entries());
+                      await sendPayload(
+                        {
+                          section: "customer",
+                          action: "update",
+                          recordId: customer.id,
+                          fullName: String(body.fullName ?? customer.fullName),
+                          phone: String(body.phone ?? customer.phone ?? ""),
+                          email: String(body.email ?? customer.email ?? ""),
+                          country: String(body.country ?? customer.country ?? ""),
+                          language: String(body.language ?? customer.language ?? ""),
+                          notes: String(body.notes ?? customer.notes ?? ""),
+                        },
+                        "Müşteri güncellendi.",
+                      );
+                    }}
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field name="fullName" label="Ad soyad" defaultValue={customer.fullName} />
+                      <Field name="phone" label="Telefon" defaultValue={customer.phone ?? ""} />
+                      <Field name="email" label="Email" defaultValue={customer.email ?? ""} type="email" />
+                      <Field name="country" label="Ülke" defaultValue={customer.country ?? ""} />
+                      <Field name="language" label="Dil" defaultValue={customer.language ?? ""} />
+                    </div>
+                    <TextArea name="notes" label="Not" defaultValue={customer.notes} />
+                    <button
+                      className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                      type="submit"
+                    >
+                      Notu kaydet
+                    </button>
+                  </form>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Henüz müşteri kaydı yok.
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        className={show("finance") ? "" : "hidden"}
+        title="Finans"
+        description="Rezervasyon bazli ciro, kapora ve tahsilat durumlari businessId icinde izlenir."
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryTile label="Toplam ciro" value={String(financeSummary.totalTurnover)} />
+            <SummaryTile label="Alinan kapora" value={String(financeSummary.depositCollected)} />
+            <SummaryTile
+              label="Kalan tahsilat"
+              value={String(financeSummary.remainingCollection)}
+            />
+            <SummaryTile
+              label="Aracta tahsil"
+              value={String(financeSummary.collectedInVehicle)}
+            />
+          </div>
+
+          <div className="grid gap-3">
+            {operations.length ? (
+              operations.map((request) => (
+                <FinanceCard
+                  key={`finance-${request.id}`}
+                  request={request}
+                  onSave={sendPayload}
+                />
+              ))
+            ) : (
+              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Finans kaydi yok.
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      <Grid className={show("services") || show("vehicles") || show("routes") || show("blog") ? "" : "hidden"}>
+        <EditableListCard
+          className={show("services") ? "" : "hidden"}
           description="Kisa hizmet kayitlari."
-          section="service"
+          emptyLabel="Henuz hizmet kaydi yok."
           items={panel.services}
-          submit={submit}
-          fields={
+          pending={isPending}
+          onPreview={previewUrl ? openPreview : undefined}
+          previewDisabled={!previewUrl}
+          section="service"
+          title="Hizmetler"
+          onDelete={deleteRecord}
+          renderCreateFields={
             <>
               <Field name="title" label="Hizmet adi" placeholder="Airport Transfer" />
               <Field name="description" label="Aciklama" placeholder="..." />
+              <Check name="active" label="Aktif" defaultChecked />
             </>
           }
+          renderEditFields={(item) => (
+            <>
+              <Field name="title" label="Hizmet adi" defaultValue={item.title ?? ""} />
+              <Field
+                name="description"
+                label="Aciklama"
+                defaultValue={item.description ?? ""}
+              />
+              <Check name="active" label="Aktif" defaultChecked={item.active ?? true} />
+            </>
+          )}
+          renderSummary={(item) => (
+            <>
+              <div className="font-medium text-slate-900">{item.title}</div>
+              <div className="text-sm text-slate-600">{item.description ?? ""}</div>
+            </>
+          )}
+          submit={submit}
         />
 
-        <CollectionCard
-          title="Araclar"
+        <EditableListCard
+          className={show("vehicles") ? "" : "hidden"}
           description="Arac kategorileri."
-          section="vehicle"
+          emptyLabel="Henuz arac kaydi yok."
           items={panel.vehicles}
-          submit={submit}
-          fields={
+          pending={isPending}
+          onPreview={previewUrl ? openPreview : undefined}
+          previewDisabled={!previewUrl}
+          section="vehicle"
+          title="Araclar"
+          onDelete={deleteRecord}
+          renderCreateFields={
             <>
               <Field name="title" label="Arac adi" placeholder="VIP Van" />
               <Field name="description" label="Aciklama" placeholder="..." />
+              <Check name="active" label="Aktif" defaultChecked />
             </>
           }
+          renderEditFields={(item) => (
+            <>
+              <Field name="title" label="Arac adi" defaultValue={item.title ?? ""} />
+              <Field
+                name="description"
+                label="Aciklama"
+                defaultValue={item.description ?? ""}
+              />
+              <Check name="active" label="Aktif" defaultChecked={item.active ?? true} />
+            </>
+          )}
+          renderSummary={(item) => (
+            <>
+              <div className="font-medium text-slate-900">{item.title}</div>
+              <div className="text-sm text-slate-600">{item.description ?? ""}</div>
+            </>
+          )}
+          submit={submit}
         />
 
-        <CollectionCard
-          title="Rotalar"
+        <EditableListCard
+          className={show("routes") ? "" : "hidden"}
           description="Populer transfer rotalari."
-          section="route"
+          emptyLabel="Henuz rota kaydi yok."
           items={panel.routes}
-          submit={submit}
-          fields={
+          pending={isPending}
+          onPreview={previewUrl ? openPreview : undefined}
+          previewDisabled={!previewUrl}
+          section="route"
+          title="Rotalar"
+          onDelete={deleteRecord}
+          renderCreateFields={
             <>
               <Field name="title" label="Rota adi" placeholder="Airport - City" />
               <Field name="description" label="Aciklama" placeholder="..." />
+              <Check name="active" label="Aktif" defaultChecked />
             </>
           }
+          renderEditFields={(item) => (
+            <>
+              <Field name="title" label="Rota adi" defaultValue={item.title ?? ""} />
+              <Field
+                name="description"
+                label="Aciklama"
+                defaultValue={item.description ?? ""}
+              />
+              <Check name="active" label="Aktif" defaultChecked={item.active ?? true} />
+            </>
+          )}
+          renderSummary={(item) => (
+            <>
+              <div className="font-medium text-slate-900">{item.title}</div>
+              <div className="text-sm text-slate-600">{item.description ?? ""}</div>
+            </>
+          )}
+          submit={submit}
         />
 
-        <CollectionCard
-          title="Blog"
+        <EditableListCard
+          className={show("blog") ? "" : "hidden"}
           description="Basit yazi kaydi."
-          section="blog"
+          emptyLabel="Henuz blog kaydi yok."
           items={panel.blogs}
-          submit={submit}
-          fields={
+          pending={isPending}
+          onPreview={previewUrl ? openPreview : undefined}
+          previewDisabled={!previewUrl}
+          section="blog"
+          title="Blog"
+          onDelete={deleteRecord}
+          renderCreateFields={
             <>
               <Field name="title" label="Yazi basligi" placeholder="Transfer ipuclari" />
               <Field name="slug" label="Slug" placeholder="transfer-ipuclari" />
               <Field name="excerpt" label="Kisa ozet" placeholder="..." />
-              <Field name="content" label="Icerik" placeholder="..." />
+              <TextArea
+                name="content"
+                label="Icerik"
+                placeholder="..."
+              />
+              <Check name="published" label="Yayinda" />
             </>
           }
+          renderEditFields={(item) => (
+            <>
+              <Field name="title" label="Yazi basligi" defaultValue={item.title ?? ""} />
+              <Field name="slug" label="Slug" defaultValue={item.slug ?? ""} />
+              <Field name="excerpt" label="Kisa ozet" defaultValue={item.excerpt ?? ""} />
+              <TextArea
+                name="content"
+                label="Icerik"
+                defaultValue={item.content ?? ""}
+              />
+              <Check name="published" label="Yayinda" defaultChecked={item.published ?? false} />
+            </>
+          )}
+          renderSummary={(item) => (
+            <>
+              <div className="font-medium text-slate-900">{item.title}</div>
+              <div className="text-sm text-slate-600">{item.excerpt ?? ""}</div>
+              <div className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+                {item.published ? "Yayinda" : "Taslak"}
+              </div>
+            </>
+          )}
+          submit={submit}
         />
       </Grid>
+
+      <SectionCard
+        className={show("languages") ? "" : "hidden"}
+        title="Dil yönetimi"
+        description="Temel dil kaydi olustur ve mevcut kaydi guncelle."
+      >
+        <EditableListCard
+          description="Dil kayitlari."
+          emptyLabel="Henuz dil kaydi yok."
+          items={panel.locales}
+          pending={isPending}
+          onPreview={previewUrl ? openPreview : undefined}
+          previewDisabled={!previewUrl}
+          section="locale"
+          title=""
+          onDelete={deleteRecord}
+          renderCreateFields={
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field name="code" label="Kod" placeholder="tr" />
+                <Field name="name" label="Dil adi" placeholder="Turkce" />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Check name="active" label="Aktif" defaultChecked />
+                <Check name="published" label="Yayinda" />
+                <Check name="translationComplete" label="Ceviri tamam" />
+              </div>
+            </>
+          }
+          renderEditFields={(item) => (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field name="code" label="Kod" defaultValue={item.code ?? ""} />
+                <Field name="name" label="Dil adi" defaultValue={item.name ?? ""} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Check name="active" label="Aktif" defaultChecked={item.active ?? true} />
+                <Check name="published" label="Yayinda" defaultChecked={item.published ?? false} />
+                <Check
+                  name="translationComplete"
+                  label="Ceviri tamam"
+                  defaultChecked={item.translationComplete ?? false}
+                />
+              </div>
+            </>
+          )}
+          renderSummary={(item) => (
+            <>
+              <div className="font-medium text-slate-900">
+                {item.code?.toUpperCase()} - {item.name}
+              </div>
+              <div className="text-sm text-slate-600">
+                {item.active ? "Aktif" : "Pasif"}
+                {" / "}
+                {item.published ? "Yayinda" : "Taslak"}
+                {" / "}
+                {item.translationComplete ? "Ceviri tamam" : "Ceviri eksik"}
+              </div>
+            </>
+          )}
+          submit={submit}
+        />
+      </SectionCard>
+
+      <SectionCard
+        className={show("password") ? "" : "hidden"}
+        title="Admin sifresi"
+        description="Kendi admin sifreni degistir. Hash response icinde donmez."
+      >
+        <form
+          className="grid gap-3"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const formData = new FormData(form);
+            const body = Object.fromEntries(formData.entries());
+            const ok = await sendPayload(
+              {
+                section: "password",
+                newPassword: String(body.newPassword ?? ""),
+                confirmPassword: String(body.confirmPassword ?? ""),
+              },
+              "Sifre guncellendi.",
+            );
+
+            if (ok) {
+              form.reset();
+            }
+          }}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field
+              name="newPassword"
+              label="Yeni sifre"
+              type="password"
+              placeholder="Yeni sifre"
+            />
+            <Field
+              name="confirmPassword"
+              label="Sifre tekrar"
+              type="password"
+              placeholder="Yeni sifre"
+            />
+          </div>
+          <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Sifre degisimi gercek users tablosuna yazilir.
+          </div>
+          <ActionBar
+            onPreview={openPreview}
+            pending={isPending}
+            previewDisabled={!previewUrl}
+          />
+        </form>
+      </SectionCard>
     </section>
   );
 }
 
-function CollectionCard({
+function EditableListCard<T extends CollectionItem>({
   title,
   description,
   section,
   items,
   submit,
-  fields,
+  onDelete,
+  onPreview,
+  renderCreateFields,
+  renderEditFields,
+  renderSummary,
+  emptyLabel,
+  pending,
+  previewDisabled,
+  className = "",
 }: {
   title: string;
   description: string;
-  section: "service" | "vehicle" | "route" | "blog";
-  items: Array<{
-    id: string;
-    title: string;
-    description?: string;
-    excerpt?: string;
-  }>;
+  section: CollectionSection;
+  items: T[];
   submit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  fields: ReactNode;
+  onDelete: (section: CollectionSection, recordId: string) => Promise<void>;
+  onPreview?: (() => void) | undefined;
+  renderCreateFields: ReactNode;
+  renderEditFields: (item: T) => ReactNode;
+  renderSummary: (item: T) => ReactNode;
+  emptyLabel: string;
+  pending: boolean;
+  previewDisabled: boolean;
+  className?: string;
 }) {
-  return (
-    <FormCard title={title} description={description}>
+  const body = (
+    <>
       <form className="grid gap-3" onSubmit={submit}>
         <input type="hidden" name="section" value={section} />
-        {fields}
-        <button className={buttonClass} type="submit">
-          Ekle
-        </button>
+        {renderCreateFields}
+        <ActionBar
+          onPreview={onPreview}
+          pending={pending}
+          previewDisabled={previewDisabled}
+          publishDisabled
+          publishHidden={section !== "blog" && section !== "locale"}
+        />
       </form>
-      <div className="mt-4 grid gap-2">
+
+      <div className="mt-5 grid gap-3">
         {items.length ? (
           items.map((item) => (
-            <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="font-medium text-slate-900">{item.title}</div>
-              <div className="text-sm text-slate-600">{item.description ?? item.excerpt ?? ""}</div>
-            </div>
+            <article
+              key={item.id}
+              className="rounded-[22px] border border-slate-200 bg-slate-50 p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="grid gap-1">{renderSummary(item)}</div>
+                <button
+                  className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                  type="button"
+                  onClick={() => onDelete(section, item.id)}
+                >
+                  Sil
+                </button>
+              </div>
+
+              <form className="mt-4 grid gap-3" onSubmit={submit}>
+                <input type="hidden" name="section" value={section} />
+                <input type="hidden" name="action" value="update" />
+                <input type="hidden" name="recordId" value={item.id} />
+                {renderEditFields(item)}
+                <ActionBar
+                  onPreview={onPreview}
+                  pending={pending}
+                  previewDisabled={previewDisabled}
+                  publishDisabled
+                  publishHidden={section !== "blog" && section !== "locale"}
+                />
+              </form>
+            </article>
           ))
         ) : (
-          <p className="text-sm text-slate-500">Henuz kayit yok.</p>
+          <p className="text-sm text-slate-500">{emptyLabel}</p>
         )}
       </div>
-    </FormCard>
+    </>
+  );
+
+  if (!title) {
+    return <div className={`grid gap-4 ${className}`.trim()}>{body}</div>;
+  }
+
+  return (
+    <SectionCard title={title} description={description} className={className}>
+      {body}
+    </SectionCard>
   );
 }
 
-function FormCard({
+function SectionCard({
   title,
   description,
   children,
+  className = "",
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <article className="rounded-[24px] border border-slate-200 bg-white p-5">
+    <article className={`rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm ${className}`.trim()}>
       <div className="mb-4">
         <h3 className="text-xl font-semibold text-slate-900">{title}</h3>
         <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
@@ -313,8 +1448,487 @@ function FormCard({
   );
 }
 
-function Grid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-4 lg:grid-cols-2">{children}</div>;
+function MediaSlotCard({
+  kind,
+  label,
+  description,
+  items,
+  onSave,
+  pending,
+}: {
+  kind: MediaSlotKey;
+  label: string;
+  description: string;
+  items: BusinessPanelData["mediaAssets"];
+  onSave: (
+    payload: Record<string, string | boolean | number | undefined>,
+    successMessage: string,
+  ) => Promise<boolean>;
+  pending: boolean;
+}) {
+  const asset = items.find((entry) => entry.kind === kind) ?? null;
+  const sourceUrl = asset?.sourceUrl?.trim() ?? "";
+  const altText = asset?.altText?.trim() ?? "";
+
+  async function handleDelete() {
+    await onSave(
+      {
+        section: "media",
+        action: "delete",
+        kind,
+      },
+      "Medya silindi.",
+    );
+  }
+
+  return (
+    <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+      <div className="grid gap-1">
+        <div className="text-sm font-semibold text-slate-950">{label}</div>
+        <p className="text-xs leading-6 text-slate-500">{description}</p>
+      </div>
+
+      <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white">
+        {sourceUrl ? (
+          <img
+            alt={altText || label}
+            className="aspect-[16/10] h-full w-full object-cover"
+            src={sourceUrl}
+          />
+        ) : (
+          <div className="grid aspect-[16/10] place-items-center bg-slate-100 px-6 text-center text-xs leading-6 text-slate-500">
+            Placeholder
+          </div>
+        )}
+      </div>
+
+      <form
+        className="grid gap-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          const body = Object.fromEntries(formData.entries());
+          await onSave(
+            {
+              section: "media",
+              action: "update",
+              kind,
+              sourceUrl: String(body.sourceUrl ?? ""),
+              altText: String(body.altText ?? ""),
+              sortOrder: Number(body.sortOrder ?? 0),
+            },
+            "Medya kaydedildi.",
+          );
+        }}
+      >
+        <input type="hidden" name="sortOrder" value="0" />
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">Görsel URL</span>
+          <input
+            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+            defaultValue={sourceUrl}
+            name="sourceUrl"
+            placeholder="https://..."
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">Alt metin</span>
+          <input
+            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+            defaultValue={altText}
+            name="altText"
+            placeholder={label}
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={pending}
+            type="submit"
+          >
+            Kaydet
+          </button>
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={pending}
+            type="button"
+            onClick={() => {
+              void handleDelete();
+            }}
+          >
+            Temizle
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
+function MediaSlotCardV2({
+  kind,
+  label,
+  description,
+  items,
+  onSave,
+  pending,
+}: {
+  kind: MediaSlotKey;
+  label: string;
+  description: string;
+  items: BusinessPanelData["mediaAssets"];
+  onSave: (
+    payload: Record<string, string | boolean | number | undefined>,
+    successMessage: string,
+  ) => Promise<boolean>;
+  pending: boolean;
+}) {
+  const asset = items.find((entry) => entry.kind === kind) ?? null;
+  const metadata = asset?.metadata ?? null;
+  const sourceUrl = asset?.sourceUrl?.trim() ?? "";
+  const [draftSrc, setDraftSrc] = useState(metadata?.previewDataUrl?.trim() || sourceUrl);
+  const [draftAlt, setDraftAlt] = useState(
+    metadata?.altText?.trim() || asset?.altText?.trim() || label,
+  );
+  const [cropX, setCropX] = useState(String(metadata?.cropX ?? 50));
+  const [cropY, setCropY] = useState(String(metadata?.cropY ?? 50));
+  const [zoom, setZoom] = useState(String(metadata?.zoom ?? 1));
+  const [cover, setCover] = useState(Boolean(metadata?.cover ?? true));
+  const [fileName, setFileName] = useState(metadata?.fileName?.trim() || "");
+
+  async function handleDelete() {
+    await onSave(
+      {
+        section: "media",
+        action: "delete",
+        kind,
+      },
+      "Medya silindi.",
+    );
+  }
+
+  return (
+    <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+      <div className="grid gap-1">
+        <div className="text-sm font-semibold text-slate-950">{label}</div>
+        <p className="text-xs leading-6 text-slate-500">{description}</p>
+      </div>
+
+      <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white">
+        {draftSrc ? (
+          <img
+            alt={draftAlt || label}
+            className="aspect-[16/10] h-full w-full"
+            src={draftSrc}
+            style={{
+              objectFit: cover ? "cover" : "contain",
+              objectPosition: `${cropX}% ${cropY}%`,
+              transform: `scale(${Math.max(Number(zoom) || 1, 0.1)})`,
+              transformOrigin: "center",
+            }}
+          />
+        ) : (
+          <div className="grid aspect-[16/10] place-items-center bg-slate-100 px-6 text-center text-xs leading-6 text-slate-500">
+            Placeholder
+          </div>
+        )}
+      </div>
+
+      <form
+        className="grid gap-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          const body = Object.fromEntries(formData.entries());
+          await onSave(
+            {
+              section: "media",
+              action: "update",
+              kind,
+              sourceUrl: draftSrc || String(body.sourceUrl ?? ""),
+              previewDataUrl: draftSrc || String(body.sourceUrl ?? ""),
+              fileName,
+              altText: draftAlt,
+              cropX: Number(cropX ?? 50),
+              cropY: Number(cropY ?? 50),
+              zoom: Number(zoom ?? 1),
+              slot: kind,
+              cover,
+              sortOrder: Number(body.sortOrder ?? 0),
+            },
+            "Medya kaydedildi.",
+          );
+        }}
+      >
+        <input type="hidden" name="sortOrder" value="0" />
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">Dosya sec</span>
+          <input
+            accept="image/*"
+            className="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm outline-none transition file:mr-4 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-slate-400"
+            type="file"
+            onChange={async (event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              if (!file) {
+                return;
+              }
+
+              setFileName(file.name);
+              const reader = new FileReader();
+              reader.onload = () => {
+                setDraftSrc(String(reader.result ?? ""));
+              };
+              reader.readAsDataURL(file);
+            }}
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">Alt metin</span>
+          <input
+            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+            value={draftAlt}
+            onChange={(event) => setDraftAlt(event.target.value)}
+          />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <FieldControl label="Crop X %" max="100" min="0" value={cropX} onChange={setCropX} />
+          <FieldControl label="Crop Y %" max="100" min="0" value={cropY} onChange={setCropY} />
+          <FieldControl label="Zoom" max="3" min="1" step="0.05" value={zoom} onChange={setZoom} />
+        </div>
+        <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <input checked={cover} type="checkbox" onChange={(event) => setCover(event.target.checked)} />
+          <span>Kapak olarak kullan</span>
+        </label>
+        {fileName ? <p className="text-xs leading-6 text-slate-500">Dosya: {fileName}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={pending}
+            type="submit"
+          >
+            Kaydet
+          </button>
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={pending}
+            type="button"
+            onClick={() => {
+              void handleDelete();
+            }}
+          >
+            Temizle
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
+void MediaSlotCard;
+
+function OperationCard({
+  request,
+  onSave,
+}: {
+  request: OperationView;
+  onSave: (
+    payload: Record<string, string | boolean | number | undefined>,
+    successMessage: string,
+  ) => Promise<boolean>;
+}) {
+  return (
+    <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <div className="font-semibold text-slate-950">{request.customerName}</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+            {request.travelDate ?? "-"} {request.travelTime ?? ""}
+          </div>
+        </div>
+        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+          {formatBookingStatusLabel(request.bookingStatus)}
+        </div>
+      </div>
+
+      <div className="grid gap-2 text-sm text-slate-600">
+        <div>{request.phone ?? "-"}</div>
+        <div>
+          {request.origin ?? "-"} &rarr; {request.destination ?? "-"}
+        </div>
+        <div>
+          Yolcu: {request.adults + request.children + request.infants}
+        </div>
+        <div>Not: {request.notes ?? "-"}</div>
+      </div>
+
+      <form
+        className="grid gap-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          const body = Object.fromEntries(formData.entries());
+          await onSave(
+            {
+              section: "reservation",
+              action: "update",
+              recordId: request.id,
+              assignedVehicle: String(body.assignedVehicle ?? ""),
+              driverName: String(body.driverName ?? ""),
+              bookingStatus: String(body.bookingStatus ?? request.bookingStatus),
+              paymentStatus: String(body.paymentStatus ?? request.paymentStatus),
+              vehicleName: String(body.vehicleName ?? request.vehicleName ?? ""),
+              vehicleCategory: String(body.vehicleCategory ?? request.vehicleCategory ?? ""),
+              notes: String(body.notes ?? request.notes ?? ""),
+            },
+            "Operasyon guncellendi.",
+          );
+        }}
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field
+            name="assignedVehicle"
+            label="Araç atama"
+            defaultValue={request.assignedVehicle ?? request.vehicleName ?? ""}
+            placeholder="VIP Van"
+          />
+          <Field
+            name="driverName"
+            label="Şoför atama"
+            defaultValue={request.driverName ?? ""}
+            placeholder="Şoför adı"
+          />
+        </div>
+        <SelectField
+          label="Durum"
+          name="bookingStatus"
+          defaultValue={request.bookingStatus}
+          options={BOOKING_STATUS_OPTIONS}
+        />
+        <SelectField
+          label="Ödeme durumu"
+          name="paymentStatus"
+          defaultValue={request.paymentStatus}
+          options={[...PAYMENT_STATUS_OPTIONS]}
+        />
+        <TextArea name="notes" label="Not" defaultValue={request.notes ?? ""} />
+        <button
+          className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+          type="submit"
+        >
+          Atamayı kaydet
+        </button>
+      </form>
+    </article>
+  );
+}
+
+function FinanceCard({
+  request,
+  onSave,
+}: {
+  request: OperationView;
+  onSave: (
+    payload: Record<string, string | boolean | number | undefined>,
+    successMessage: string,
+  ) => Promise<boolean>;
+}) {
+  return (
+    <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <div className="font-semibold text-slate-950">{request.customerName}</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+            {request.travelDate ?? "-"} {request.travelTime ?? ""}
+          </div>
+        </div>
+        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+          {request.currency ?? "TRY"}
+        </div>
+      </div>
+
+      <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+        <div>Toplam: {request.totalAmount ?? 0}</div>
+        <div>Kapora: {request.depositAmount ?? 0}</div>
+        <div>Kalan: {request.remainingAmount ?? 0}</div>
+        <div>Durum: {formatPaymentStatusLabel(request.paymentStatus)}</div>
+      </div>
+
+      <form
+        className="grid gap-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          const body = Object.fromEntries(formData.entries());
+          await onSave(
+            {
+              section: "reservation",
+              action: "update",
+              recordId: request.id,
+              paymentStatus: String(body.paymentStatus ?? request.paymentStatus),
+            },
+            "Finans bilgisi guncellendi.",
+          );
+        }}
+      >
+        <SelectField
+          label="Ödeme durumu"
+          name="paymentStatus"
+          defaultValue={request.paymentStatus}
+          options={[...PAYMENT_STATUS_OPTIONS]}
+        />
+        <button
+          className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+          type="submit"
+        >
+          Durumu kaydet
+        </button>
+      </form>
+    </article>
+  );
+}
+
+function SummaryTile({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ViewportButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      className={`inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition ${
+        active
+          ? "border border-slate-900 bg-slate-900 text-white"
+          : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+      }`}
+      type="button"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Grid({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`grid gap-4 lg:grid-cols-2 ${className}`.trim()}>{children}</div>;
 }
 
 function Field({
@@ -344,12 +1958,153 @@ function Field({
   );
 }
 
-function Check({ name, label }: { name: string; label: string }) {
+function FieldControl({
+  label,
+  value,
+  onChange,
+  min = "0",
+  max = "100",
+  step = "1",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min?: string;
+  max?: string;
+  step?: string;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <input
+        className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+        max={max}
+        min={min}
+        step={step}
+        type="range"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function TextArea({
+  name,
+  label,
+  defaultValue,
+  placeholder,
+}: {
+  name: string;
+  label: string;
+  defaultValue?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <textarea
+        className="min-h-[120px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+        name={name}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function SelectField({
+  name,
+  label,
+  defaultValue,
+  options,
+}: {
+  name: string;
+  label: string;
+  defaultValue?: string;
+  options: string[];
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <select
+        className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+        defaultValue={defaultValue}
+        name={name}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function Check({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked?: boolean;
+}) {
   return (
     <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-      <input name={name} type="checkbox" value="true" className="h-4 w-4" />
+      <input
+        className="h-4 w-4"
+        defaultChecked={defaultChecked}
+        name={name}
+        type="checkbox"
+        value="true"
+      />
       <span>{label}</span>
     </label>
+  );
+}
+
+function ActionBar({
+  onPreview,
+  pending,
+  previewDisabled,
+  publishHidden = true,
+  publishDisabled = true,
+}: {
+  onPreview?: (() => void) | undefined;
+  pending: boolean;
+  previewDisabled: boolean;
+  publishHidden?: boolean;
+  publishDisabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-3 pt-1">
+      <button
+        className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+        disabled={pending}
+        type="submit"
+      >
+        Kaydet
+      </button>
+      <button
+        className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-70"
+        disabled={pending || previewDisabled || !onPreview}
+        type="button"
+        onClick={onPreview}
+      >
+        Onizle
+      </button>
+      {publishHidden ? null : (
+        <button
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={publishDisabled || pending}
+          type="button"
+        >
+          Yayinla
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -368,6 +2123,3 @@ function Notice({ state, pending }: { state: SaveState; pending: boolean }) {
     <div className={`rounded-[24px] border px-5 py-4 text-sm ${tone}`}>{state.message}</div>
   );
 }
-
-const buttonClass =
-  "inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800";

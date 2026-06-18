@@ -1,7 +1,7 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { getActiveBusinessByDomain } from "@/lib/business";
+import { getActiveBusinessByDomain, getBusinessById } from "@/lib/business";
 import { getBusinessPanelData, type BusinessPanelData } from "@/lib/business-panel";
 import { isPlatformHost, normalizeHost } from "@/lib/platform";
 
@@ -27,4 +27,23 @@ export async function getPublicSiteDataFromRequest() {
   const headerStore = await headers();
   const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
   return getPublicSiteDataByHost(host);
+}
+
+export async function getPublicSiteDataByBusinessId(
+  businessId: string,
+): Promise<BusinessPanelData | null> {
+  const safeBusinessId = businessId.trim();
+
+  if (!safeBusinessId) {
+    return null;
+  }
+
+  const business = await getBusinessById(safeBusinessId);
+
+  if (!business) {
+    return null;
+  }
+
+  const panel = await getBusinessPanelData(safeBusinessId);
+  return panel.business ? panel : null;
 }

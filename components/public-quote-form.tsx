@@ -7,7 +7,13 @@ type SaveState = {
   message: string;
 };
 
-export function PublicQuoteForm() {
+export function PublicQuoteForm({
+  businessId,
+  previewBusinessId,
+}: {
+  businessId: string;
+  previewBusinessId?: string;
+}) {
   const [state, setState] = useState<SaveState>({
     status: "idle",
     message: "",
@@ -24,7 +30,11 @@ export function PublicQuoteForm() {
     const response = await fetch("/api/public/quote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        businessId,
+        previewBusinessId,
+      }),
     });
 
     if (!response.ok) {
@@ -44,6 +54,10 @@ export function PublicQuoteForm() {
 
   return (
     <form className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm" onSubmit={submit}>
+      <input type="hidden" name="businessId" value={businessId} />
+      {previewBusinessId ? (
+        <input type="hidden" name="previewBusinessId" value={previewBusinessId} />
+      ) : null}
       <Status state={state} pending={state.status === "saving"} />
       <div className="grid gap-3 md:grid-cols-2">
         <Field name="customerName" label="Ad Soyad" />

@@ -1,6 +1,10 @@
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { BusinessRecord } from "@/lib/business";
+import { MEDIA_PLACEHOLDER_SRC } from "@/lib/media";
+import { joinPublicPath } from "@/lib/public-path";
 
 const navItems = [
   { href: "/", label: "Ana sayfa" },
@@ -15,22 +19,26 @@ const navItems = [
 export function PublicSiteShell({
   business,
   children,
+  basePath = "",
 }: {
   business: BusinessRecord;
   children: ReactNode;
+  basePath?: string;
 }) {
+  const buildHref = (href: string) => joinPublicPath(basePath, href);
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_40%,#f1f5f9_100%)] text-slate-950">
       <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <Link href="/" className="text-lg font-semibold tracking-tight">
+          <Link href={buildHref("/")} className="text-lg font-semibold tracking-tight">
             {business.name}
           </Link>
           <nav className="flex flex-wrap gap-2 text-sm text-slate-600">
             {navItems.map((item) => (
               <Link
                 key={item.href}
-                href={item.href}
+                href={buildHref(item.href)}
                 className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:text-slate-950"
               >
                 {item.label}
@@ -93,17 +101,31 @@ export function ContentCard({
   title,
   description,
   href,
+  imageSrc,
+  imageAlt,
 }: {
   title: string;
   description: string;
   href?: string;
+  imageSrc?: string | null;
+  imageAlt?: string;
 }) {
   const card = (
-    <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300">
-      <h2 className="text-xl font-semibold tracking-tight text-slate-950">
-        {title}
-      </h2>
-      <p className="mt-3 text-sm leading-7 text-slate-600">{description}</p>
+    <article className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300">
+      <div className="aspect-[16/10] overflow-hidden bg-slate-100">
+        <img
+          alt={imageAlt || title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          src={imageSrc?.trim() || MEDIA_PLACEHOLDER_SRC}
+        />
+      </div>
+      <div className="grid gap-3 p-5">
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">
+          {title}
+        </h2>
+        <p className="text-sm leading-7 text-slate-600">{description}</p>
+      </div>
     </article>
   );
 
@@ -112,4 +134,46 @@ export function ContentCard({
   }
 
   return <Link href={href}>{card}</Link>;
+}
+
+export function MediaFrame({
+  imageSrc,
+  imageAlt,
+  label,
+  className = "",
+}: {
+  imageSrc?: string | null;
+  imageAlt: string;
+  label?: string;
+  className?: string;
+}) {
+  const source = imageSrc?.trim() || MEDIA_PLACEHOLDER_SRC;
+
+  return (
+    <div className={`overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 ${className}`}>
+      <div className="aspect-[4/3] w-full">
+        <img alt={imageAlt} className="h-full w-full object-cover" loading="lazy" src={source} />
+      </div>
+      {label ? (
+        <div className="border-t border-slate-200 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+          {label}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">
+      <div className="font-semibold text-slate-900">{title}</div>
+      <p className="mt-2 leading-7">{description}</p>
+    </div>
+  );
 }

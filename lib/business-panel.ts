@@ -9,6 +9,21 @@ import {
   type BusinessRecord,
 } from "@/lib/business";
 import {
+  deleteBusinessMediaAsset,
+  listBusinessMediaAssets,
+  upsertBusinessMediaAsset,
+  type BusinessMediaAssetRecord,
+} from "@/lib/media";
+import {
+  listBusinessCustomers,
+  updateBusinessCustomerRecord,
+  upsertBusinessCustomerFromReservation,
+  type BusinessCustomerRecord,
+} from "@/lib/customers";
+import {
+  createBusinessRequest,
+  getBusinessRequests,
+  updateBusinessRequestRecord,
   type BusinessRequestRecord,
 } from "@/lib/requests";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
@@ -84,6 +99,8 @@ export type BusinessLocaleRecord = {
 export type BusinessPanelData = {
   business: BusinessRecord | null;
   profile: BusinessProfileRecord;
+  mediaAssets: BusinessMediaAssetRecord[];
+  customers: BusinessCustomerRecord[];
   services: BusinessServiceRecord[];
   vehicles: BusinessVehicleRecord[];
   routes: BusinessRouteRecord[];
@@ -99,6 +116,9 @@ export type BusinessPanelSection =
   | "password"
   | "logo"
   | "hero"
+  | "media"
+  | "reservation"
+  | "customer"
   | "service"
   | "vehicle"
   | "route"
@@ -108,7 +128,9 @@ export type BusinessPanelSection =
 
 type PanelUpdate = {
   section: BusinessPanelSection;
-  [key: string]: string | boolean | undefined;
+  action?: "create" | "update" | "delete";
+  recordId?: string;
+  [key: string]: string | boolean | number | undefined;
 };
 
 type DemoPanelState = Omit<BusinessPanelData, "business"> & {
@@ -149,6 +171,8 @@ function emptyPanelState(businessId: string): DemoPanelState {
       heroSubtitle: "",
       heroButtonText: "",
     },
+    mediaAssets: [],
+    customers: [],
     services: [],
     vehicles: [],
     routes: [],
@@ -177,6 +201,7 @@ const demoPanels = new Map<string, DemoPanelState>([
         heroSubtitle: "Havalimani, otel ve VIP transfer icin sade akis.",
         heroButtonText: "Teklif al",
       },
+      mediaAssets: [],
       services: [
         {
           id: "service-1",
@@ -250,6 +275,22 @@ const demoPanels = new Map<string, DemoPanelState>([
           translationComplete: false,
         },
       ],
+      customers: [
+        {
+          id: "customer-1",
+          businessId: "business-demo-1",
+          fullName: "Demo User",
+          email: "demo@example.com",
+          phone: "+90 555 111 22 33",
+          country: "TR",
+          language: "tr",
+          source: "web",
+          notes: "Airport transfer icin teklif istiyorum.",
+          active: true,
+          createdAt: "2026-06-10T10:00:00.000Z",
+          updatedAt: "2026-06-10T10:00:00.000Z",
+        },
+      ],
       requests: [
         {
           id: "request-1",
@@ -257,6 +298,28 @@ const demoPanels = new Map<string, DemoPanelState>([
           customerName: "Demo User",
           phone: "+90 555 111 22 33",
           email: "demo@example.com",
+          country: "TR",
+          language: "tr",
+          origin: "Airport",
+          destination: "Hotel",
+          travelDate: "2026-06-10",
+          travelTime: "10:30",
+          flightCode: "TK123",
+          adults: 2,
+          children: 1,
+          infants: 0,
+          vehicleCategory: "VIP",
+          vehicleName: "VIP Van",
+          assignedVehicle: "VIP Van",
+          driverName: "Demo Driver",
+          totalAmount: 1200,
+          depositAmount: 300,
+          remainingAmount: 900,
+          currency: "TRY",
+          paymentStatus: "Kapora Alındı",
+          notes: "Airport transfer icin teklif istiyorum.",
+          source: "web",
+          bookingStatus: "Bekliyor",
           message: "Airport transfer icin teklif istiyorum.",
           status: "new",
           createdAt: "2026-06-10T10:00:00.000Z",
@@ -399,6 +462,8 @@ function buildPanelResponse(
   return {
     business,
     profile: panel.profile,
+    mediaAssets: panel.mediaAssets,
+    customers: panel.customers,
     services: panel.services,
     vehicles: panel.vehicles,
     routes: panel.routes,
@@ -416,18 +481,22 @@ export async function getBusinessPanelData(
 
   if (!hasSupabaseConnection()) {
     const demo = getDemoPanel(businessId);
-    return buildPanelResponse(demo, business);
+    const mediaAssets = await listBusinessMediaAssets(businessId);
+    const customerRows = await listBusinessCustomers(businessId);
+    const customers = customerRows.length ? customerRows : demo.customers;
+    return buildPanelResponse({ ...demo, mediaAssets, customers }, business);
   }
 
   const [
     profileRows,
+    mediaRows,
+    customerRows,
     serviceRows,
     vehicleRows,
     routeRows,
     blogRows,
     seoRows,
     localeRows,
-    requestRows,
   ] =
     await Promise.all([
       readRows(
@@ -435,6 +504,8 @@ export async function getBusinessPanelData(
           businessId,
         )}&limit=1`,
       ),
+      listBusinessMediaAssets(businessId),
+      listBusinessCustomers(businessId),
       readRows(
         `/business_services?business_id=eq.${encodeURIComponent(
           businessId,
@@ -463,12 +534,8 @@ export async function getBusinessPanelData(
           businessId,
         )}&order=created_at.asc`,
       ),
-      readRows(
-        `/requests?business_id=eq.${encodeURIComponent(
-          businessId,
-        )}&order=created_at.desc`,
-      ),
     ]);
+  const requestRows = await getBusinessRequests(businessId);
 
   return {
     business,
@@ -480,6 +547,8 @@ export async function getBusinessPanelData(
           heroSubtitle: "",
           heroButtonText: "",
         },
+    mediaAssets: mediaRows,
+    customers: customerRows,
     services: serviceRows.map(mapService),
     vehicles: vehicleRows.map(mapVehicle),
     routes: routeRows.map(mapRoute),
@@ -495,16 +564,7 @@ export async function getBusinessPanelData(
           hreflangEnabled: true,
         },
     locales: localeRows.map(mapLocale),
-    requests: requestRows.map((row) => ({
-      id: String(row.id ?? ""),
-      businessId: String(row.business_id ?? ""),
-      customerName: String(row.customer_name ?? ""),
-      phone: (row.phone as string | null) ?? null,
-      email: (row.email as string | null) ?? null,
-      message: String(row.message ?? ""),
-      status: (row.status as BusinessRequestRecord["status"]) ?? "new",
-      createdAt: String(row.created_at ?? ""),
-    })),
+    requests: requestRows,
   };
 }
 
@@ -558,6 +618,118 @@ export async function updateBusinessPanelSection(
           heroSubtitle: String(payload.heroSubtitle ?? ""),
           heroButtonText: String(payload.heroButtonText ?? ""),
         });
+      }
+      case "media": {
+        return await updateBusinessMediaRecord(businessId, payload);
+      }
+      case "reservation": {
+        const recordId = String(payload.recordId ?? "").trim();
+        const action = payload.action ?? (recordId ? "update" : "create");
+
+        if (action === "update") {
+          if (!recordId) {
+            throw new Error("Rezervasyon bulunamadi.");
+          }
+
+          await updateBusinessRequestRecord(businessId, recordId, {
+            assignedVehicle:
+              payload.assignedVehicle === undefined
+                ? undefined
+                : String(payload.assignedVehicle).trim() || undefined,
+            driverName:
+              payload.driverName === undefined
+                ? undefined
+                : String(payload.driverName).trim() || undefined,
+            bookingStatus:
+              payload.bookingStatus === undefined
+                ? undefined
+                : String(payload.bookingStatus).trim() || undefined,
+            vehicleName:
+              payload.vehicleName === undefined
+                ? undefined
+                : String(payload.vehicleName).trim() || undefined,
+            vehicleCategory:
+              payload.vehicleCategory === undefined
+                ? undefined
+                : String(payload.vehicleCategory).trim() || undefined,
+            paymentStatus:
+              payload.paymentStatus === undefined
+                ? undefined
+                : String(payload.paymentStatus).trim() || undefined,
+            notes:
+              payload.notes === undefined
+                ? undefined
+                : String(payload.notes).trim() || undefined,
+          });
+
+          return await getBusinessPanelData(businessId);
+        }
+
+        await createBusinessRequest(businessId, {
+          customerName: String(payload.customerName ?? "").trim(),
+          phone: String(payload.phone ?? "").trim(),
+          email: String(payload.email ?? "").trim(),
+          country: String(payload.country ?? "").trim(),
+          language: String(payload.language ?? "").trim(),
+          origin: String(payload.origin ?? "").trim(),
+          destination: String(payload.destination ?? "").trim(),
+          travelDate: String(payload.travelDate ?? "").trim(),
+          travelTime: String(payload.travelTime ?? "").trim(),
+          flightCode: String(payload.flightCode ?? "").trim(),
+          adults: Number(payload.adults ?? 0),
+          children: Number(payload.children ?? 0),
+          infants: Number(payload.infants ?? 0),
+          vehicleCategory: String(payload.vehicleCategory ?? "").trim(),
+          vehicleName: String(payload.vehicleName ?? "").trim(),
+          assignedVehicle: String(payload.assignedVehicle ?? "").trim(),
+          driverName: String(payload.driverName ?? "").trim(),
+          totalAmount: String(payload.totalAmount ?? "").trim(),
+          depositAmount: String(payload.depositAmount ?? "").trim(),
+          remainingAmount: String(payload.remainingAmount ?? "").trim(),
+          currency: String(payload.currency ?? "").trim(),
+          paymentStatus: String(payload.paymentStatus ?? "Ödenmedi").trim(),
+          notes: String(payload.notes ?? "").trim(),
+          source: String(payload.source ?? "manual").trim() || "manual",
+          bookingStatus: String(payload.bookingStatus ?? "Bekliyor").trim(),
+          message: String(payload.message ?? "").trim(),
+        });
+        return await getBusinessPanelData(businessId);
+      }
+      case "customer": {
+        const recordId = String(payload.recordId ?? "").trim();
+        const action = payload.action ?? (recordId ? "update" : "create");
+
+        if (action === "update") {
+          if (!recordId) {
+            throw new Error("Musteri bulunamadi.");
+          }
+
+          const source =
+            String(payload.source ?? "").trim() || undefined;
+
+          await updateBusinessCustomerRecord(businessId, recordId, {
+            fullName: String(payload.fullName ?? "").trim() || undefined,
+            email: String(payload.email ?? "").trim() || undefined,
+            phone: String(payload.phone ?? "").trim() || undefined,
+            country: String(payload.country ?? "").trim() || undefined,
+            language: String(payload.language ?? "").trim() || undefined,
+            notes: String(payload.notes ?? "").trim() || undefined,
+            source,
+          });
+
+          return await getBusinessPanelData(businessId);
+        }
+
+        await upsertBusinessCustomerFromReservation(businessId, {
+          fullName: String(payload.fullName ?? "").trim(),
+          email: String(payload.email ?? "").trim() || undefined,
+          phone: String(payload.phone ?? "").trim() || undefined,
+          country: String(payload.country ?? "").trim() || undefined,
+          language: String(payload.language ?? "").trim() || undefined,
+          source: String(payload.source ?? "manual").trim() || "manual",
+          notes: String(payload.notes ?? "").trim() || undefined,
+        });
+        return await getBusinessPanelData(businessId);
       }
       case "service":
         return await addBusinessItemDemo(businessId, "service", {
@@ -724,6 +896,104 @@ export async function updateBusinessPanelSection(
 
       return await getBusinessPanelData(businessId);
     }
+    case "media": {
+      return await updateBusinessMediaRecord(businessId, payload);
+    }
+    case "reservation": {
+      const recordId = String(payload.recordId ?? "").trim();
+      const action = payload.action ?? (recordId ? "update" : "create");
+
+      if (action === "update") {
+        if (!recordId) {
+          throw new Error("Rezervasyon bulunamadi.");
+        }
+
+        await updateBusinessRequestRecord(businessId, recordId, {
+          assignedVehicle: String(payload.assignedVehicle ?? "").trim(),
+          driverName: String(payload.driverName ?? "").trim(),
+          bookingStatus: String(payload.bookingStatus ?? "Bekliyor").trim(),
+          vehicleName: String(payload.vehicleName ?? "").trim(),
+          vehicleCategory: String(payload.vehicleCategory ?? "").trim(),
+          notes: String(payload.notes ?? "").trim(),
+        });
+
+        return await getBusinessPanelData(businessId);
+      }
+
+      await createBusinessRequest(businessId, {
+        customerName: String(payload.customerName ?? "").trim(),
+        phone: String(payload.phone ?? "").trim(),
+        email: String(payload.email ?? "").trim(),
+        country: String(payload.country ?? "").trim(),
+        language: String(payload.language ?? "").trim(),
+        origin: String(payload.origin ?? "").trim(),
+        destination: String(payload.destination ?? "").trim(),
+        travelDate: String(payload.travelDate ?? "").trim(),
+        travelTime: String(payload.travelTime ?? "").trim(),
+        flightCode: String(payload.flightCode ?? "").trim(),
+        adults: Number(payload.adults ?? 0),
+        children: Number(payload.children ?? 0),
+        infants: Number(payload.infants ?? 0),
+        vehicleCategory: String(payload.vehicleCategory ?? "").trim(),
+        vehicleName: String(payload.vehicleName ?? "").trim(),
+        totalAmount: String(payload.totalAmount ?? "").trim(),
+        depositAmount: String(payload.depositAmount ?? "").trim(),
+        remainingAmount: String(payload.remainingAmount ?? "").trim(),
+        currency: String(payload.currency ?? "").trim(),
+        notes: String(payload.notes ?? "").trim(),
+        source: String(payload.source ?? "manual").trim() || "manual",
+        bookingStatus: String(payload.bookingStatus ?? "Bekliyor").trim(),
+        message: String(payload.message ?? "").trim(),
+        assignedVehicle: String(payload.assignedVehicle ?? "").trim(),
+        driverName: String(payload.driverName ?? "").trim(),
+      });
+      await upsertBusinessCustomerFromReservation(businessId, {
+        fullName: String(payload.customerName ?? "").trim(),
+        email: String(payload.email ?? "").trim() || undefined,
+        phone: String(payload.phone ?? "").trim() || undefined,
+        country: String(payload.country ?? "").trim() || undefined,
+        language: String(payload.language ?? "").trim() || undefined,
+        source: String(payload.source ?? "manual").trim() || "manual",
+        notes: String(payload.notes ?? "").trim() || undefined,
+      });
+      return await getBusinessPanelData(businessId);
+    }
+    case "customer": {
+      const recordId = String(payload.recordId ?? "").trim();
+      const action = payload.action ?? (recordId ? "update" : "create");
+
+      if (action === "update") {
+        if (!recordId) {
+          throw new Error("Musteri bulunamadi.");
+        }
+
+        const source =
+          String(payload.source ?? "").trim() || undefined;
+
+        await updateBusinessCustomerRecord(businessId, recordId, {
+          fullName: String(payload.fullName ?? "").trim() || undefined,
+          email: String(payload.email ?? "").trim() || undefined,
+          phone: String(payload.phone ?? "").trim() || undefined,
+          country: String(payload.country ?? "").trim() || undefined,
+          language: String(payload.language ?? "").trim() || undefined,
+          notes: String(payload.notes ?? "").trim() || undefined,
+          source,
+        });
+
+        return await getBusinessPanelData(businessId);
+      }
+
+      await upsertBusinessCustomerFromReservation(businessId, {
+        fullName: String(payload.fullName ?? "").trim(),
+        email: String(payload.email ?? "").trim() || undefined,
+        phone: String(payload.phone ?? "").trim() || undefined,
+        country: String(payload.country ?? "").trim() || undefined,
+        language: String(payload.language ?? "").trim() || undefined,
+        source: String(payload.source ?? "manual").trim() || "manual",
+        notes: String(payload.notes ?? "").trim() || undefined,
+      });
+      return await getBusinessPanelData(businessId);
+    }
     case "service":
     case "vehicle":
     case "route":
@@ -764,102 +1034,527 @@ export async function updateBusinessPanelSection(
     return await getBusinessPanelData(businessId);
   }
 
-  if (payload.section === "locale") {
-    const code = String(payload.code ?? "").trim().toLowerCase();
-    const existing = await readRows(
-      `/business_locales?business_id=eq.${encodeURIComponent(
-        businessId,
-      )}&code=eq.${encodeURIComponent(code)}&limit=1`,
-    );
+  return await updateBusinessCollectionSection(businessId, payload);
+}
+
+async function updateBusinessMediaRecord(
+  businessId: string,
+  payload: PanelUpdate,
+) {
+  const kind = String(payload.kind ?? "").trim();
+  const action = payload.action ?? (payload.recordId ? "update" : "create");
+  const sourceUrl = String(payload.previewDataUrl ?? payload.sourceUrl ?? "").trim();
+  const altText = String(payload.altText ?? "").trim();
+  const sortOrder = Number(payload.sortOrder ?? 0);
+  const cropX = Number(payload.cropX ?? 50);
+  const cropY = Number(payload.cropY ?? 50);
+  const zoom = Number(payload.zoom ?? 1);
+  const slot = String(payload.slot ?? kind).trim() || kind;
+  const cover = Boolean(payload.cover ?? true);
+  const fileName = String(payload.fileName ?? "").trim();
+
+  if (!kind) {
+    throw new Error("Medya tipi gerekli.");
+  }
+
+  if (action === "delete") {
+    await deleteBusinessMediaAsset(businessId, kind);
+    return await getBusinessPanelData(businessId);
+  }
+
+  await upsertBusinessMediaAsset(businessId, {
+    kind,
+    sourceUrl,
+    altText,
+    metadata: {
+      fileName: fileName || undefined,
+      previewDataUrl: sourceUrl || undefined,
+      cropX,
+      cropY,
+      zoom,
+      slot,
+      altText: altText || undefined,
+      cover,
+    },
+    sortOrder,
+    status: sourceUrl ? "ready" : "placeholder",
+  });
+
+  return await getBusinessPanelData(businessId);
+}
+
+const collectionTableBySection = {
+  service: "business_services",
+  vehicle: "business_vehicles",
+  route: "business_routes",
+  blog: "business_blog_posts",
+  locale: "business_locales",
+} as const;
+
+async function updateBusinessCollectionSection(
+  businessId: string,
+  payload: PanelUpdate,
+) {
+  if (!hasSupabaseConnection()) {
+    return await updateBusinessCollectionDemo(businessId, payload);
+  }
+
+  switch (payload.section) {
+    case "service":
+    case "vehicle":
+    case "route":
+    case "blog":
+      return await updateBusinessContentRecord(businessId, payload.section, payload);
+    case "locale":
+      return await updateBusinessLocaleRecord(businessId, payload);
+    default:
+      throw new Error("Gecersiz alan.");
+  }
+}
+
+async function updateBusinessContentRecord(
+  businessId: string,
+  section: "service" | "vehicle" | "route" | "blog",
+  payload: PanelUpdate,
+) {
+  const table = collectionTableBySection[section];
+  const action = payload.action ?? (payload.recordId ? "update" : "create");
+  const recordId = String(payload.recordId ?? "").trim();
+  const rows = await readRows(
+    `/${table}?business_id=eq.${encodeURIComponent(businessId)}&select=id,slug,title,description,excerpt,content,published,sort_order,active,created_at,updated_at&order=created_at.asc`,
+  );
+  const current = recordId
+    ? rows.find((row) => String(row.id ?? "") === recordId) ?? null
+    : null;
+
+  if (action === "delete") {
+    if (!recordId) {
+      throw new Error("Kayit bulunamadi.");
+    }
+
     const response = await supabaseFetch(
-      existing[0]
-        ? `/business_locales?business_id=eq.${encodeURIComponent(
-            businessId,
-          )}&code=eq.${encodeURIComponent(code)}`
-        : `/business_locales`,
+      `/${table}?id=eq.${encodeURIComponent(recordId)}&business_id=eq.${encodeURIComponent(
+        businessId,
+      )}`,
       {
-        method: existing[0] ? "PATCH" : "POST",
-        body: JSON.stringify({
-          business_id: businessId,
-          code,
-          name: String(payload.name ?? "").trim(),
-          active: Boolean(payload.active ?? false),
-          published: Boolean(payload.published ?? false),
-          translation_complete: Boolean(payload.translationComplete ?? false),
-        }),
+        method: "DELETE",
       },
     );
 
     if (!response?.ok) {
-      throw new Error("Dil kaydi olusturulamadi.");
+      throw new Error("Kayit silinemedi.");
     }
 
     return await getBusinessPanelData(businessId);
   }
 
-  const tableBySection: Record<
-    Exclude<
-      BusinessPanelSection,
-      "business" | "domain" | "password" | "logo" | "hero" | "seo" | "locale"
-    >,
-    string
-  > = {
-    service: "business_services",
-    vehicle: "business_vehicles",
-    route: "business_routes",
-    blog: "business_blog_posts",
-  };
+  if (action === "update" && !current) {
+    throw new Error("Kayit bulunamadi.");
+  }
 
-  const collectionSection = payload.section as keyof typeof tableBySection;
-  const table = tableBySection[collectionSection];
-  const existingRows = await readRows(
-    `/${table}?business_id=eq.${encodeURIComponent(
-      businessId,
-    )}&select=slug&order=created_at.asc`,
-  );
-  const existingSlugs = existingRows
+  const existingSlugs = rows
+    .filter((row) => String(row.id ?? "") !== recordId)
     .map((row) => String(row.slug ?? ""))
     .filter(Boolean);
-  const commonBody =
-    payload.section === "blog"
+  const title = String(payload.title ?? current?.title ?? "").trim();
+  const description = String(payload.description ?? current?.description ?? "").trim();
+  const excerpt = String(payload.excerpt ?? current?.excerpt ?? "").trim();
+  const content = String(payload.content ?? current?.content ?? "").trim();
+  const published =
+    typeof payload.published === "boolean"
+      ? payload.published
+      : Boolean(current?.published ?? false);
+  const active =
+    typeof payload.active === "boolean"
+      ? payload.active
+      : Boolean(current?.active ?? true);
+  const sortOrder = Number(payload.sortOrder ?? current?.sort_order ?? rows.length + 1);
+  const slugSource =
+    section === "blog"
+      ? String(payload.slug ?? current?.slug ?? title).trim()
+      : title;
+  const slug = uniqueSlug(slugSource, existingSlugs);
+  const body =
+    section === "blog"
       ? {
           business_id: businessId,
-          title: String(payload.title ?? "").trim(),
-          slug: uniqueSlug(
-            String(payload.slug ?? payload.title ?? "").trim(),
-            existingSlugs,
-          ),
-          excerpt: String(payload.excerpt ?? "").trim(),
-          content: String(payload.content ?? "").trim(),
-          published: Boolean(payload.published ?? false),
-          sort_order: Number(payload.sortOrder ?? 0),
-          created_at: nowIso(),
+          title,
+          slug,
+          excerpt,
+          content,
+          published,
+          sort_order: sortOrder,
           updated_at: nowIso(),
         }
       : {
           business_id: businessId,
-          slug: uniqueSlug(
-            String(payload.title ?? "").trim(),
-            existingSlugs,
-          ),
-          title: String(payload.title ?? "").trim(),
-          description: String(payload.description ?? "").trim(),
-          sort_order: Number(payload.sortOrder ?? 0),
-          active: Boolean(payload.active ?? true),
-          created_at: nowIso(),
+          slug,
+          title,
+          description,
+          sort_order: sortOrder,
+          active,
           updated_at: nowIso(),
         };
 
-  const response = await supabaseFetch(`/${table}`, {
-    method: "POST",
-    body: JSON.stringify(commonBody),
-  });
+  const response = await supabaseFetch(
+    action === "create"
+      ? `/${table}`
+      : `/${table}?id=eq.${encodeURIComponent(recordId)}&business_id=eq.${encodeURIComponent(
+          businessId,
+        )}`,
+    {
+      method: action === "create" ? "POST" : "PATCH",
+      body: JSON.stringify(
+        action === "create"
+          ? {
+              ...body,
+              created_at: nowIso(),
+            }
+          : body,
+      ),
+    },
+  );
 
   if (!response?.ok) {
-    throw new Error("Kayit olusturulamadi.");
+    throw new Error(action === "create" ? "Kayit olusturulamadi." : "Kayit guncellenemedi.");
   }
 
   return await getBusinessPanelData(businessId);
+}
+
+async function updateBusinessLocaleRecord(
+  businessId: string,
+  payload: PanelUpdate,
+) {
+  const action = payload.action ?? (payload.recordId ? "update" : "create");
+  const recordId = String(payload.recordId ?? "").trim();
+  const rows = await readRows(
+    `/business_locales?business_id=eq.${encodeURIComponent(businessId)}&select=id,code,name,active,published,translation_complete,created_at,updated_at&order=created_at.asc`,
+  );
+  const current = recordId
+    ? rows.find((row) => String(row.id ?? "") === recordId) ?? null
+    : null;
+
+  if (action === "delete") {
+    if (!recordId) {
+      throw new Error("Dil kaydi bulunamadi.");
+    }
+
+    const response = await supabaseFetch(
+      `/business_locales?id=eq.${encodeURIComponent(recordId)}&business_id=eq.${encodeURIComponent(
+        businessId,
+      )}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!response?.ok) {
+      throw new Error("Dil kaydi silinemedi.");
+    }
+
+    return await getBusinessPanelData(businessId);
+  }
+
+  if (action === "update" && !current) {
+    throw new Error("Dil kaydi bulunamadi.");
+  }
+
+  const code = String(payload.code ?? current?.code ?? "").trim().toLowerCase();
+  const name = String(payload.name ?? current?.name ?? "").trim();
+  const active =
+    typeof payload.active === "boolean"
+      ? payload.active
+      : Boolean(current?.active ?? false);
+  const published =
+    typeof payload.published === "boolean"
+      ? payload.published
+      : Boolean(current?.published ?? false);
+  const translationComplete =
+    typeof payload.translationComplete === "boolean"
+      ? payload.translationComplete
+      : Boolean(current?.translation_complete ?? false);
+
+  if (!code) {
+    throw new Error("Dil kodu gerekli.");
+  }
+
+  const duplicate = rows.find(
+    (row) =>
+      String(row.id ?? "") !== recordId &&
+      String(row.code ?? "").toLowerCase() === code,
+  );
+
+  if (duplicate) {
+    throw new Error("Bu dil kodu zaten kullanılıyor.");
+  }
+
+  const body = {
+    business_id: businessId,
+    code,
+    name,
+    active,
+    published,
+    translation_complete: translationComplete,
+    updated_at: nowIso(),
+  };
+
+  const response = await supabaseFetch(
+    action === "create"
+      ? `/business_locales`
+      : `/business_locales?id=eq.${encodeURIComponent(recordId)}&business_id=eq.${encodeURIComponent(
+          businessId,
+        )}`,
+    {
+      method: action === "create" ? "POST" : "PATCH",
+      body: JSON.stringify(
+        action === "create"
+          ? {
+              ...body,
+              created_at: nowIso(),
+            }
+          : body,
+      ),
+    },
+  );
+
+  if (!response?.ok) {
+    throw new Error(action === "create" ? "Dil kaydi olusturulamadi." : "Dil kaydi guncellenemedi.");
+  }
+
+  return await getBusinessPanelData(businessId);
+}
+
+async function updateBusinessCollectionDemo(
+  businessId: string,
+  payload: PanelUpdate,
+) {
+  const current = getDemoPanel(businessId);
+  const action = payload.action ?? (payload.recordId ? "update" : "create");
+  const recordId = String(payload.recordId ?? "").trim();
+
+  if (payload.section === "locale") {
+    const code = String(payload.code ?? "").trim().toLowerCase();
+    const name = String(payload.name ?? "").trim();
+    const active =
+      typeof payload.active === "boolean"
+        ? payload.active
+        : false;
+    const published =
+      typeof payload.published === "boolean"
+        ? payload.published
+        : false;
+    const translationComplete =
+      typeof payload.translationComplete === "boolean"
+        ? payload.translationComplete
+        : false;
+
+    if (action === "delete") {
+      if (!recordId) {
+        throw new Error("Dil kaydi bulunamadi.");
+      }
+
+      const nextLocales = current.locales.filter((entry) => entry.id !== recordId);
+      if (nextLocales.length === current.locales.length) {
+        throw new Error("Dil kaydi bulunamadi.");
+      }
+
+      persistDemoPanel(businessId, { locales: nextLocales });
+      return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+    }
+
+    if (!code) {
+      throw new Error("Dil kodu gerekli.");
+    }
+
+    const duplicate = current.locales.find(
+      (entry) => entry.id !== recordId && entry.code.toLowerCase() === code,
+    );
+
+    if (duplicate) {
+      throw new Error("Bu dil kodu zaten kullanılıyor.");
+    }
+
+    const nextLocale: BusinessLocaleRecord = {
+      id: recordId || randomUUID(),
+      businessId,
+      code,
+      name,
+      active,
+      published,
+      translationComplete,
+    };
+
+    const locales = action === "create"
+      ? [nextLocale, ...current.locales.filter((entry) => entry.code !== code)]
+      : current.locales.map((entry) => (entry.id === recordId ? nextLocale : entry));
+
+    persistDemoPanel(businessId, { locales });
+    return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+  }
+
+  const section = payload.section as "service" | "vehicle" | "route" | "blog";
+  const itemsBySection = {
+    service: current.services,
+    vehicle: current.vehicles,
+    route: current.routes,
+    blog: current.blogs,
+  } as const;
+  const items = itemsBySection[section];
+
+  if (action === "delete") {
+    if (!recordId) {
+      throw new Error("Kayit bulunamadi.");
+    }
+
+    const nextItems = items.filter((entry) => entry.id !== recordId);
+    if (nextItems.length === items.length) {
+      throw new Error("Kayit bulunamadi.");
+    }
+
+    persistDemoPanel(
+      businessId,
+      section === "service"
+        ? { services: nextItems as BusinessServiceRecord[] }
+        : section === "vehicle"
+          ? { vehicles: nextItems as BusinessVehicleRecord[] }
+          : section === "route"
+            ? { routes: nextItems as BusinessRouteRecord[] }
+            : { blogs: nextItems as BusinessBlogRecord[] },
+    );
+    return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+  }
+
+  const currentItem = recordId
+    ? items.find((entry) => entry.id === recordId) ?? null
+    : null;
+
+  if (action === "update" && !currentItem) {
+    throw new Error("Kayit bulunamadi.");
+  }
+
+  const existingSlugs = items
+    .filter((entry) => entry.id !== recordId)
+    .map((entry) => entry.slug)
+    .filter(Boolean);
+  const title = String(payload.title ?? currentItem?.title ?? "").trim();
+  const description =
+    section === "blog"
+      ? ""
+      : String(
+          payload.description ??
+            (currentItem && "description" in currentItem
+              ? currentItem.description
+              : ""),
+        ).trim();
+  const slugSource =
+    section === "blog"
+      ? String(payload.slug ?? currentItem?.slug ?? title).trim()
+      : title;
+  const slug = uniqueSlug(slugSource, existingSlugs);
+  const sortOrder = Number(payload.sortOrder ?? currentItem?.sortOrder ?? items.length + 1);
+  const active =
+    section === "blog"
+      ? false
+      : typeof payload.active === "boolean"
+        ? payload.active
+        : Boolean(
+            currentItem && "active" in currentItem
+              ? currentItem.active
+              : true,
+          );
+
+  if (section === "blog") {
+    const item: BusinessBlogRecord = {
+      id: recordId || randomUUID(),
+      businessId,
+      title,
+      slug,
+      excerpt: String(
+        payload.excerpt ??
+          (currentItem && "excerpt" in currentItem ? currentItem.excerpt : ""),
+      ).trim(),
+      content: String(
+        payload.content ??
+          (currentItem && "content" in currentItem ? currentItem.content : ""),
+      ).trim(),
+      published:
+        typeof payload.published === "boolean"
+          ? payload.published
+          : Boolean(
+              currentItem && "published" in currentItem
+                ? currentItem.published
+                : false,
+            ),
+      sortOrder,
+    };
+
+    const blogs =
+      action === "create"
+        ? [item, ...current.blogs.filter((entry) => entry.slug !== item.slug)]
+        : current.blogs.map((entry) => (entry.id === recordId ? item : entry));
+
+    persistDemoPanel(businessId, { blogs });
+    return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+  }
+
+  if (section === "service") {
+    const item: BusinessServiceRecord = {
+      id: recordId || randomUUID(),
+      businessId,
+      slug,
+      title,
+      description,
+      sortOrder,
+      active,
+    };
+
+    const services =
+      action === "create"
+        ? [item, ...current.services.filter((entry) => entry.slug !== item.slug)]
+        : current.services.map((entry) => (entry.id === recordId ? item : entry));
+
+    persistDemoPanel(businessId, { services });
+    return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+  }
+
+  if (section === "vehicle") {
+    const item: BusinessVehicleRecord = {
+      id: recordId || randomUUID(),
+      businessId,
+      slug,
+      title,
+      description,
+      sortOrder,
+      active,
+    };
+
+    const vehicles =
+      action === "create"
+        ? [item, ...current.vehicles.filter((entry) => entry.slug !== item.slug)]
+        : current.vehicles.map((entry) => (entry.id === recordId ? item : entry));
+
+    persistDemoPanel(businessId, { vehicles });
+    return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+  }
+
+  const item: BusinessRouteRecord = {
+    id: recordId || randomUUID(),
+    businessId,
+    slug,
+    title,
+    description,
+    sortOrder,
+    active,
+  };
+
+  const routes =
+    action === "create"
+      ? [item, ...current.routes.filter((entry) => entry.slug !== item.slug)]
+      : current.routes.map((entry) => (entry.id === recordId ? item : entry));
+
+  persistDemoPanel(businessId, { routes });
+  return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
 }
 
 async function updateBusinessLogoDemo(businessId: string, logoUrl: string) {
