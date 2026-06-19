@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { recordAuditLog } from "@/lib/audit";
 import {
   createBusinessWithAdmin,
   updateBusinessAdminPasswordRecord,
@@ -48,6 +49,16 @@ export async function POST(request: Request) {
       created.admin.id,
       adminPassword,
     );
+    await recordAuditLog({
+      businessId: created.business.id,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "business",
+      entityId: created.business.id,
+      action: "create",
+      before: null,
+      after: created.business,
+    });
     revalidatePath("/super-admin");
 
     return NextResponse.json({

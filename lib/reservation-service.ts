@@ -37,10 +37,17 @@ const demoReservations = new Map<string, ReservationRecord[]>([
         babyCount: 0,
         vehicleCategory: "VIP",
         vehicleName: "VIP Van",
+        supplierName: "Demo Supplier",
+        agencyName: "Demo Agency",
         assignedVehicle: "VIP Van",
         driverName: "Demo Driver",
         pickupStatus: null,
         operationNotes: null,
+        collectedAmount: 300,
+        supplierPass: 120,
+        agencyPass: 80,
+        supplierCollection: 700,
+        profit: 260,
         totalAmount: 1200,
         depositAmount: 300,
         remainingAmount: 900,
@@ -161,10 +168,30 @@ function mapReservation(row: Record<string, unknown>): ReservationRecord {
     babyCount: Number(row.baby_count ?? 0),
     vehicleCategory: (row.vehicle_category as string | null) ?? null,
     vehicleName: (row.vehicle_name as string | null) ?? null,
+    supplierName: (row.supplier_name as string | null) ?? null,
+    agencyName: (row.agency_name as string | null) ?? null,
     assignedVehicle: (row.assigned_vehicle as string | null) ?? null,
     driverName: (row.driver_name as string | null) ?? null,
     pickupStatus: (row.pickup_status as string | null) ?? null,
     operationNotes: (row.operation_notes as string | null) ?? null,
+    collectedAmount:
+      row.collected_amount === null || row.collected_amount === undefined
+        ? null
+        : Number(row.collected_amount),
+    supplierPass:
+      row.supplier_pass === null || row.supplier_pass === undefined
+        ? null
+        : Number(row.supplier_pass),
+    agencyPass:
+      row.agency_pass === null || row.agency_pass === undefined
+        ? null
+        : Number(row.agency_pass),
+    supplierCollection:
+      row.supplier_collection === null || row.supplier_collection === undefined
+        ? null
+        : Number(row.supplier_collection),
+    profit:
+      row.profit === null || row.profit === undefined ? null : Number(row.profit),
     totalAmount:
       row.total_amount === null || row.total_amount === undefined
         ? null
@@ -198,7 +225,16 @@ function sanitizeReservationCreatePayload(
   const travelDate = normalizeText(input.travelDate);
   const travelTime = normalizeText(input.travelTime);
   const vehicleName = normalizeOptionalText(input.vehicleName);
+  const supplierName = normalizeOptionalText(input.supplierName);
+  const agencyName = normalizeOptionalText(input.agencyName);
   const note = normalizeOptionalText(input.notes);
+  const collectedAmount = normalizeAmount(input.collectedAmount);
+  const supplierPass = normalizeAmount(input.supplierPass);
+  const agencyPass = normalizeAmount(input.agencyPass);
+  const supplierCollection = normalizeAmount(input.supplierCollection);
+  const profit = normalizeAmount(
+    input.profit ?? (collectedAmount ?? 0) + (agencyPass ?? 0) - (supplierPass ?? 0),
+  );
 
   const payload = {
     business_id: businessId,
@@ -217,6 +253,13 @@ function sanitizeReservationCreatePayload(
     baby_count: normalizeCount(input.babyCount ?? input.infants),
     vehicle_category: normalizeOptionalText(input.vehicleCategory),
     vehicle_name: vehicleName,
+    supplier_name: supplierName,
+    agency_name: agencyName,
+    collected_amount: collectedAmount,
+    supplier_pass: supplierPass,
+    agency_pass: agencyPass,
+    supplier_collection: supplierCollection,
+    profit,
     total_amount: normalizeAmount(input.totalAmount),
     deposit_amount: normalizeAmount(input.depositAmount),
     remaining_amount: normalizeAmount(input.remainingAmount),
@@ -282,7 +325,7 @@ async function readErrorMessage(response: Response | null, fallback: string) {
 export async function listReservations(businessId: string) {
   if (hasSupabaseConnection()) {
     const rows = await readRows(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_status,operation_notes,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
         businessId,
       )}&order=created_at.desc`,
     );
@@ -299,7 +342,7 @@ export async function getReservationById(
 ) {
   if (hasSupabaseConnection()) {
     const rows = await readRows(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_status,operation_notes,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
         reservationId,
       )}&business_id=eq.${encodeURIComponent(businessId)}&limit=1`,
     );
@@ -402,10 +445,17 @@ export async function createReservation(
     babyCount: payload.baby_count,
     vehicleCategory: payload.vehicle_category,
     vehicleName: (payload.vehicle_name as string | null) ?? null,
+    supplierName: (payload.supplier_name as string | null) ?? null,
+    agencyName: (payload.agency_name as string | null) ?? null,
     assignedVehicle: null,
     driverName: null,
     pickupStatus: null,
     operationNotes: null,
+    collectedAmount: payload.collected_amount as number | null,
+    supplierPass: payload.supplier_pass as number | null,
+    agencyPass: payload.agency_pass as number | null,
+    supplierCollection: payload.supplier_collection as number | null,
+    profit: payload.profit as number | null,
     totalAmount: payload.total_amount as number | null,
     depositAmount: payload.deposit_amount as number | null,
     remainingAmount: payload.remaining_amount as number | null,
@@ -504,6 +554,46 @@ export async function updateReservation(
     patchPayload.vehicle_category = normalizeOptionalText(input.vehicleCategory);
   }
 
+  if (input.supplierName !== undefined) {
+    patchPayload.supplier_name = normalizeOptionalText(input.supplierName);
+  }
+
+  if (input.agencyName !== undefined) {
+    patchPayload.agency_name = normalizeOptionalText(input.agencyName);
+  }
+
+  if (input.collectedAmount !== undefined) {
+    patchPayload.collected_amount = normalizeAmount(input.collectedAmount);
+  }
+
+  if (input.supplierPass !== undefined) {
+    patchPayload.supplier_pass = normalizeAmount(input.supplierPass);
+  }
+
+  if (input.agencyPass !== undefined) {
+    patchPayload.agency_pass = normalizeAmount(input.agencyPass);
+  }
+
+  if (input.supplierCollection !== undefined) {
+    patchPayload.supplier_collection = normalizeAmount(input.supplierCollection);
+  }
+
+  if (input.profit !== undefined) {
+    patchPayload.profit = normalizeAmount(input.profit);
+  }
+
+  if (
+    input.profit === undefined &&
+    (input.collectedAmount !== undefined ||
+      input.supplierPass !== undefined ||
+      input.agencyPass !== undefined)
+  ) {
+    patchPayload.profit =
+      Number((patchPayload.collected_amount as number | null | undefined) ?? 0) +
+      Number((patchPayload.agency_pass as number | null | undefined) ?? 0) -
+      Number((patchPayload.supplier_pass as number | null | undefined) ?? 0);
+  }
+
   if (input.paymentStatus !== undefined) {
     patchPayload.payment_status = normalizePaymentStatus(input.paymentStatus);
   }
@@ -588,6 +678,19 @@ export async function updateReservation(
       (patchPayload.vehicle_name as string | null | undefined) ?? existing.vehicleName,
     vehicleCategory:
       (patchPayload.vehicle_category as string | null | undefined) ?? existing.vehicleCategory,
+    supplierName:
+      (patchPayload.supplier_name as string | null | undefined) ?? existing.supplierName,
+    agencyName:
+      (patchPayload.agency_name as string | null | undefined) ?? existing.agencyName,
+    collectedAmount:
+      (patchPayload.collected_amount as number | null | undefined) ?? existing.collectedAmount,
+    supplierPass:
+      (patchPayload.supplier_pass as number | null | undefined) ?? existing.supplierPass,
+    agencyPass:
+      (patchPayload.agency_pass as number | null | undefined) ?? existing.agencyPass,
+    supplierCollection:
+      (patchPayload.supplier_collection as number | null | undefined) ?? existing.supplierCollection,
+    profit: (patchPayload.profit as number | null | undefined) ?? existing.profit,
     paymentStatus:
       (patchPayload.payment_status as string | undefined) ?? existing.paymentStatus,
     notes: (patchPayload.notes as string | null | undefined) ?? existing.notes,

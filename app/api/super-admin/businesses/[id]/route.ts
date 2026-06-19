@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { recordAuditLog } from "@/lib/audit";
 import {
   createBusinessAdminRecord,
   deleteBusinessRecord,
@@ -49,9 +50,21 @@ export async function PATCH(
   }
 
   try {
+    const beforeBusiness = await getBusinessById(id);
+
     if (target === "business") {
       if (action === "delete") {
         await deleteBusinessRecord(id);
+        await recordAuditLog({
+          businessId: id,
+          actorUserId: auth.session.userId,
+          actorRole: auth.session.role,
+          entityType: "business",
+          entityId: id,
+          action: "delete",
+          before: beforeBusiness,
+          after: null,
+        });
         revalidatePath("/super-admin");
         return NextResponse.json({
           ok: true,
@@ -61,14 +74,45 @@ export async function PATCH(
 
       await updateBusinessActiveRecord(id, action === "activate");
       const business = await getBusinessById(id);
+      await recordAuditLog({
+        businessId: id,
+        actorUserId: auth.session.userId,
+        actorRole: auth.session.role,
+        entityType: "business",
+        entityId: id,
+        action: action === "activate" ? "activate" : "deactivate",
+        before: beforeBusiness,
+        after: business,
+      });
       revalidatePath("/super-admin");
       return NextResponse.json({ ok: true, business });
     }
 
     if (action === "delete") {
       await deleteBusinessAdminRecord(id);
+      await recordAuditLog({
+        businessId: id,
+        actorUserId: auth.session.userId,
+        actorRole: auth.session.role,
+        entityType: "business_admin",
+        entityId: id,
+        action: "delete",
+        before: beforeBusiness,
+        after: null,
+      });
     } else {
       await updateBusinessAdminActiveRecord(id, action === "activate");
+      const business = await getBusinessById(id);
+      await recordAuditLog({
+        businessId: id,
+        actorUserId: auth.session.userId,
+        actorRole: auth.session.role,
+        entityType: "business_admin",
+        entityId: id,
+        action: action === "activate" ? "activate" : "deactivate",
+        before: beforeBusiness,
+        after: business,
+      });
     }
 
     const business = await getBusinessById(id);

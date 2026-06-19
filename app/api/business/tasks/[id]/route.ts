@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
-import { deleteTask, updateTask } from "@/lib/tasks";
+import { recordAuditLog } from "@/lib/audit";
+import { deleteTask, listTasks, updateTask } from "@/lib/tasks";
 
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -25,6 +26,8 @@ export async function PATCH(
     payload: body,
   });
 
+  const beforeTask = (await listTasks(auth.session.businessId)).find((item) => item.id === id) ?? null;
+
   try {
     const task = await updateTask(auth.session.businessId, {
       recordId: id,
@@ -46,6 +49,17 @@ export async function PATCH(
         | "Tamamlandı"
         | "İptal"
         | undefined,
+    });
+
+    await recordAuditLog({
+      businessId: auth.session.businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "task",
+      entityId: id,
+      action: "update",
+      before: beforeTask,
+      after: task,
     });
 
     return NextResponse.json({ ok: true, task });
@@ -79,7 +93,18 @@ export async function DELETE(
   });
 
   try {
+    const beforeTask = (await listTasks(auth.session.businessId)).find((item) => item.id === id) ?? null;
     await deleteTask(auth.session.businessId, id);
+    await recordAuditLog({
+      businessId: auth.session.businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "task",
+      entityId: id,
+      action: "delete",
+      before: beforeTask,
+      after: null,
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

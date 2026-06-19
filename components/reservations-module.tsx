@@ -53,6 +53,13 @@ type ReservationUpdateState = {
   paymentStatus: string;
   vehicleCategory: string;
   vehicleName: string;
+  supplierName: string;
+  agencyName: string;
+  collectedAmount: string;
+  supplierPass: string;
+  agencyPass: string;
+  supplierCollection: string;
+  profit: string;
   assignedVehicle: string;
   driverName: string;
   pickupStatus: string;
@@ -193,6 +200,13 @@ function createUpdateState(reservation: ReservationRecord): ReservationUpdateSta
     paymentStatus: normalizePaymentStatus(reservation.paymentStatus),
     vehicleCategory: reservation.vehicleCategory ?? "",
     vehicleName: reservation.vehicleName ?? "",
+    supplierName: reservation.supplierName ?? "",
+    agencyName: reservation.agencyName ?? "",
+    collectedAmount: String(reservation.collectedAmount ?? ""),
+    supplierPass: String(reservation.supplierPass ?? ""),
+    agencyPass: String(reservation.agencyPass ?? ""),
+    supplierCollection: String(reservation.supplierCollection ?? ""),
+    profit: String(reservation.profit ?? ""),
     assignedVehicle: reservation.assignedVehicle ?? "",
     driverName: reservation.driverName ?? "",
     pickupStatus: reservation.pickupStatus ?? "",
@@ -256,6 +270,8 @@ function buildReservationSearchText(reservation: ReservationRecord) {
     reservation.origin,
     reservation.destination,
     reservation.flightCode,
+    reservation.supplierName,
+    reservation.agencyName,
     reservation.driverName,
     reservation.assignedVehicle,
     reservation.vehicleName,
@@ -726,6 +742,11 @@ export function ReservationsModule({ businessId, initialReservations }: Props) {
       return;
     }
 
+    const profit =
+      Number(draft.collectedAmount ?? 0) +
+      Number(draft.agencyPass ?? 0) -
+      Number(draft.supplierPass ?? 0);
+
     const ok = await patchReservation(
       reservationId,
       {
@@ -733,6 +754,13 @@ export function ReservationsModule({ businessId, initialReservations }: Props) {
         paymentStatus: draft.paymentStatus,
         vehicleCategory: draft.vehicleCategory,
         vehicleName: draft.vehicleName,
+        supplierName: draft.supplierName,
+        agencyName: draft.agencyName,
+        collectedAmount: draft.collectedAmount,
+        supplierPass: draft.supplierPass,
+        agencyPass: draft.agencyPass,
+        supplierCollection: draft.supplierCollection,
+        profit: String(profit),
         assignedVehicle: draft.assignedVehicle,
         driverName: draft.driverName,
         pickupStatus: draft.pickupStatus,
@@ -1106,10 +1134,12 @@ export function ReservationsModule({ businessId, initialReservations }: Props) {
               filteredReservations.map((reservation) => {
                 const isEditing = editingId === reservation.id;
                 const draft = editForms[reservation.id] ?? createUpdateState(reservation);
-                const total = Number(reservation.totalAmount ?? 0);
-                const deposit = Number(reservation.depositAmount ?? 0);
-                const remaining = Number(reservation.remainingAmount ?? 0);
-                const profit = Number.isFinite(total) ? total - remaining : 0;
+                const collectedAmount = Number(reservation.collectedAmount ?? 0);
+                const supplierPass = Number(reservation.supplierPass ?? 0);
+                const agencyPass = Number(reservation.agencyPass ?? 0);
+                const profit = Number.isFinite(Number(reservation.profit))
+                  ? Number(reservation.profit ?? 0)
+                  : collectedAmount + agencyPass - supplierPass;
 
                 return (
                   <Fragment key={reservation.id}>
@@ -1135,16 +1165,28 @@ export function ReservationsModule({ businessId, initialReservations }: Props) {
                           <div className="text-xs text-slate-500">{text(reservation.driverName)}</div>
                         </div>
                       </Td>
-                      <Td>{text(reservation.vehicleCategory)}</Td>
                       <Td>
                         <div className="grid gap-1">
-                          <div>{text(reservation.source)}</div>
+                          <div className="font-medium text-slate-900">{text(reservation.supplierName)}</div>
+                          <div className="text-xs text-slate-500">
+                            Tahsilat: {formatMoney(reservation.supplierCollection, reservation.currency)}
+                          </div>
+                        </div>
+                      </Td>
+                      <Td>
+                        <div className="grid gap-1">
+                          <div className="font-medium text-slate-900">{text(reservation.agencyName)}</div>
+                          <div className="text-xs text-slate-500">{text(reservation.source)}</div>
+                        </div>
+                      </Td>
+                      <Td>
+                        <div className="grid gap-1">
+                          <div>{formatMoney(reservation.collectedAmount, reservation.currency)}</div>
                           <div className="text-xs text-slate-500">{text(reservation.country)}</div>
                         </div>
                       </Td>
-                      <Td>{formatMoney(deposit || total, reservation.currency)}</Td>
-                      <Td>{formatMoney(deposit, reservation.currency)}</Td>
-                      <Td>{formatMoney(remaining, reservation.currency)}</Td>
+                      <Td>{formatMoney(reservation.agencyPass, reservation.currency)}</Td>
+                      <Td>{formatMoney(reservation.supplierPass, reservation.currency)}</Td>
                       <Td>{formatMoney(profit, reservation.currency)}</Td>
                       <Td>
                         <InlineSelect
@@ -1312,6 +1354,81 @@ export function ReservationsModule({ businessId, initialReservations }: Props) {
                                       [reservation.id]: { ...draft, vehicleName: value },
                                     }))
                                   }
+                                />
+                                <Field
+                                  label="Tedarikçi"
+                                  value={draft.supplierName}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, supplierName: value },
+                                    }))
+                                  }
+                                />
+                                <Field
+                                  label="Acente"
+                                  value={draft.agencyName}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, agencyName: value },
+                                    }))
+                                  }
+                                />
+                                <Field
+                                  label="Alınan"
+                                  value={draft.collectedAmount}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, collectedAmount: value },
+                                    }))
+                                  }
+                                  type="number"
+                                />
+                                <Field
+                                  label="Acente PASS"
+                                  value={draft.agencyPass}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, agencyPass: value },
+                                    }))
+                                  }
+                                  type="number"
+                                />
+                                <Field
+                                  label="Tedarikçi PASS"
+                                  value={draft.supplierPass}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, supplierPass: value },
+                                    }))
+                                  }
+                                  type="number"
+                                />
+                                <Field
+                                  label="Tedarikçi tahsilatı"
+                                  value={draft.supplierCollection}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, supplierCollection: value },
+                                    }))
+                                  }
+                                  type="number"
+                                />
+                                <Field
+                                  label="Kâr"
+                                  value={draft.profit}
+                                  onChange={(value) =>
+                                    setEditForms((current) => ({
+                                      ...current,
+                                      [reservation.id]: { ...draft, profit: value },
+                                    }))
+                                  }
+                                  type="number"
                                 />
                                 <Field
                                   label="Atanan araç"

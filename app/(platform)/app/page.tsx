@@ -86,6 +86,9 @@ export default async function BusinessDashboardPage() {
     ).length,
   };
 
+  const financeStats = buildFinanceStats(reservations, todayKey);
+  const financeCurrency = buildFinanceCurrency(reservations);
+
   return (
     <section className="grid gap-6">
       <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -127,6 +130,22 @@ export default async function BusinessDashboardPage() {
             <Metric label="Bekleyen rezervasyon" value={String(reservationStats.pending)} />
             <Metric label="Onaylanan rezervasyon" value={String(reservationStats.confirmed)} />
             <Metric label="Ödeme bekleyen" value={String(reservationStats.paymentDue)} />
+          </div>
+        </article>
+
+        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Finans özeti</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Metric label="Bugünkü kâr" value={formatMoneyValue(financeStats.todayProfit, financeCurrency)} />
+            <Metric label="Toplam kâr" value={formatMoneyValue(financeStats.totalProfit, financeCurrency)} />
+            <Metric
+              label="Tedarikçiye ödenecek"
+              value={formatMoneyValue(financeStats.supplierPayable, financeCurrency)}
+            />
+            <Metric
+              label="Acenteden alınacak"
+              value={formatMoneyValue(financeStats.agencyReceivable, financeCurrency)}
+            />
           </div>
         </article>
 
@@ -235,4 +254,74 @@ function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function toMoney(value: number | string | null | undefined) {
+  return Number.isFinite(Number(value ?? 0)) ? Number(value ?? 0) : 0;
+}
+
+function buildFinanceCurrency(
+  reservations: Array<{
+    currency?: string | null;
+  }>,
+) {
+  const currencies = Array.from(
+    new Set(
+      reservations
+        .map((reservation) => String(reservation.currency ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return currencies.length === 1 ? currencies[0] : null;
+}
+
+function formatMoneyValue(value: number, currency?: string | null) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const formatted = new Intl.NumberFormat("tr-TR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
+
+  const safeCurrency = String(currency ?? "").trim();
+  return safeCurrency ? `${formatted} ${safeCurrency}` : formatted;
+}
+
+function buildFinanceStats(
+  reservations: Array<{
+    travelDate?: string | null;
+    totalAmount?: number | string | null;
+    collectedAmount?: number | string | null;
+    supplierPass?: number | string | null;
+    agencyPass?: number | string | null;
+    supplierCollection?: number | string | null;
+    profit?: number | string | null;
+  }>,
+  todayKey: string,
+) {
+  return reservations.reduce(
+    (summary, reservation) => {
+      const totalProfit = toMoney(reservation.profit);
+      const supplierPass = toMoney(reservation.supplierPass);
+      const agencyPass = toMoney(reservation.agencyPass);
+      const profit =
+        totalProfit || toMoney(reservation.collectedAmount) + agencyPass - supplierPass;
+
+      summary.totalProfit += profit;
+      summary.supplierPayable += supplierPass;
+      summary.agencyReceivable += agencyPass;
+
+      if (reservation.travelDate === todayKey) {
+        summary.todayProfit += profit;
+      }
+
+      return summary;
+    },
+    {
+      todayProfit: 0,
+      totalProfit: 0,
+      supplierPayable: 0,
+      agencyReceivable: 0,
+    },
+  );
 }

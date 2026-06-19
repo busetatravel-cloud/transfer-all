@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireApiRole } from "@/lib/auth";
-import { deletePlan, updatePlan } from "@/lib/plans";
+import { recordAuditLog } from "@/lib/audit";
+import { deletePlan, getPlanById, updatePlan } from "@/lib/plans";
 
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -38,6 +39,7 @@ export async function PATCH(
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
 
   try {
+    const before = await getPlanById(id);
     const plan = await updatePlan(id, {
       name: body?.name === undefined ? undefined : normalizeText(body?.name),
       monthlyPrice: normalizeNumericValue(body?.monthlyPrice ?? body?.monthly_price),
@@ -48,6 +50,17 @@ export async function PATCH(
           ? undefined
           : (body?.features as string[] | string),
       active: normalizeBoolean(body?.active),
+    });
+
+    await recordAuditLog({
+      businessId: "system",
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "plan",
+      entityId: id,
+      action: "update",
+      before,
+      after: plan,
     });
 
     revalidatePath("/super-admin/plans");
@@ -76,7 +89,18 @@ export async function DELETE(
   const { id } = await params;
 
   try {
+    const before = await getPlanById(id);
     await deletePlan(id);
+    await recordAuditLog({
+      businessId: "system",
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "plan",
+      entityId: id,
+      action: "delete",
+      before,
+      after: null,
+    });
     revalidatePath("/super-admin/plans");
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -307,6 +307,10 @@ type FinanceSummary = {
   collectedInVehicle: number;
   paidTotal: number;
   refundTotal: number;
+  totalProfit: number;
+  totalSupplierPass: number;
+  totalAgencyPass: number;
+  vehicleCollection: number;
 };
 
 function toMoney(value: number | null | undefined) {
@@ -364,9 +368,16 @@ function buildFinanceSummary(operations: OperationView[]) {
       const total = toMoney(request.totalAmount);
       const deposit = toMoney(request.depositAmount);
       const remaining = toMoney(request.remainingAmount);
+      const collectedAmount = toMoney(request.collectedAmount);
+      const supplierPass = toMoney(request.supplierPass);
+      const agencyPass = toMoney(request.agencyPass);
+      const profit = toMoney(request.profit ?? collectedAmount + agencyPass - supplierPass);
       const paymentStatus = formatPaymentStatusLabel(request.paymentStatus);
 
       summary.totalTurnover += total;
+      summary.totalProfit += profit;
+      summary.totalSupplierPass += supplierPass;
+      summary.totalAgencyPass += agencyPass;
 
       if (paymentStatus === depositCollectedStatus) {
         summary.depositCollected += deposit || total;
@@ -388,6 +399,8 @@ function buildFinanceSummary(operations: OperationView[]) {
         summary.refundTotal += total;
       }
 
+      summary.vehicleCollection += remaining || Math.max(total - deposit, 0);
+
       return summary;
     },
     {
@@ -397,6 +410,10 @@ function buildFinanceSummary(operations: OperationView[]) {
       collectedInVehicle: 0,
       paidTotal: 0,
       refundTotal: 0,
+      totalProfit: 0,
+      totalSupplierPass: 0,
+      totalAgencyPass: 0,
+      vehicleCollection: 0,
     },
   );
 }
@@ -1323,6 +1340,25 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
             />
           </div>
 
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryTile
+              label="Toplam kâr"
+              value={formatFinanceSummaryValue(financeSummary.totalProfit, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="Toplam tedarikçi PASS"
+              value={formatFinanceSummaryValue(financeSummary.totalSupplierPass, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="Toplam acente PASS"
+              value={formatFinanceSummaryValue(financeSummary.totalAgencyPass, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="Araçta alınacak"
+              value={formatFinanceSummaryValue(financeSummary.vehicleCollection, financeSummaryCurrency)}
+            />
+          </div>
+
           <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 no-print">
             <div className="grid gap-3 xl:grid-cols-5">
               <label className="grid gap-2">
@@ -1432,14 +1468,16 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   <Th>Toplam</Th>
                   <Th>Kapora</Th>
                   <Th>Kalan</Th>
-                  <Th>Para birimi</Th>
-                  <Th>Ödeme durumu</Th>
-                  <Th>Kaynak / Acente</Th>
-                  <Th>Tedarikçi PASS</Th>
-                  <Th>Acente PASS</Th>
-                  <Th>Kâr</Th>
-                  <Th>Not</Th>
-                  <Th className="no-print">Aksiyonlar</Th>
+              <Th>Para birimi</Th>
+              <Th>Ödeme durumu</Th>
+              <Th>Kaynak / Acente</Th>
+              <Th>Tedarikçi</Th>
+              <Th>Alınan</Th>
+              <Th>Acente PASS</Th>
+              <Th>Tedarikçi PASS</Th>
+              <Th>Kâr</Th>
+              <Th>Not</Th>
+              <Th className="no-print">Aksiyonlar</Th>
                 </tr>
               </thead>
               <tbody>
@@ -1454,7 +1492,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   ))
                 ) : (
                   <tr>
-                    <td className="border-t border-slate-200 px-4 py-6 text-sm text-slate-500" colSpan={15}>
+                    <td className="border-t border-slate-200 px-4 py-6 text-sm text-slate-500" colSpan={17}>
                       Finans kaydı yok.
                     </td>
                   </tr>
@@ -2232,6 +2270,10 @@ function OperationCard({
           {request.origin ?? "-"} → {request.destination ?? "-"}
         </div>
         <div>Yolcu: {request.adults + request.children + request.infants}</div>
+        <div>Tedarikçi: {request.supplierName ?? "-"}</div>
+        <div>Araç: {request.vehicleName ?? request.assignedVehicle ?? "-"}</div>
+        <div>Tedarikçi tahsilatı: {formatMoneyValue(request.supplierCollection ?? 0, request.currency)}</div>
+        <div>Araçta alınacak: {formatMoneyValue(request.remainingAmount ?? 0, request.currency)}</div>
         <div>Not: {request.notes ?? "-"}</div>
       </div>
 
@@ -2308,19 +2350,31 @@ function FinanceTableRow({
     remainingAmount: string;
     paymentStatus: string;
     notes: string;
+    supplierName: string;
+    agencyName: string;
+    collectedAmount: string;
+    supplierPass: string;
+    agencyPass: string;
+    supplierCollection: string;
   }>({
     totalAmount: String(request.totalAmount ?? ""),
     depositAmount: String(request.depositAmount ?? ""),
     remainingAmount: String(request.remainingAmount ?? ""),
     paymentStatus: formatPaymentStatusLabel(request.paymentStatus),
     notes: String(request.notes ?? ""),
+    supplierName: String(request.supplierName ?? ""),
+    agencyName: String(request.agencyName ?? ""),
+    collectedAmount: String(request.collectedAmount ?? ""),
+    supplierPass: String(request.supplierPass ?? ""),
+    agencyPass: String(request.agencyPass ?? ""),
+    supplierCollection: String(request.supplierCollection ?? ""),
   });
   const [saving, setSaving] = useState(false);
   const routeLabel = [request.origin, request.destination].filter(Boolean).join(" → ") || "-";
-  const profit = Math.max(
-    toMoney(request.totalAmount) - toMoney(request.depositAmount) - toMoney(request.remainingAmount),
-    0,
-  );
+  const profit =
+    Number(draft.collectedAmount || 0) +
+    Number(draft.agencyPass || 0) -
+    Number(draft.supplierPass || 0);
 
   async function saveRow() {
     setSaving(true);
@@ -2334,6 +2388,13 @@ function FinanceTableRow({
           remainingAmount: draft.remainingAmount,
           paymentStatus: draft.paymentStatus,
           notes: draft.notes,
+          supplierName: draft.supplierName,
+          agencyName: draft.agencyName,
+          collectedAmount: draft.collectedAmount,
+          supplierPass: draft.supplierPass,
+          agencyPass: draft.agencyPass,
+          supplierCollection: draft.supplierCollection,
+          profit: String(profit),
         },
         "Tahsilat güncellendi.",
       );
@@ -2408,9 +2469,68 @@ function FinanceTableRow({
           <div className="text-xs text-slate-500 finance-readonly-value">{formatPaymentStatusLabel(request.paymentStatus)}</div>
         </div>
       </Td>
-      <Td>{request.source ?? "-"}</Td>
-      <Td>-</Td>
-      <Td>-</Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            value={draft.agencyName}
+            onChange={(event) => setDraft((current) => ({ ...current, agencyName: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{request.source ?? "-"}</div>
+        </div>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            value={draft.supplierName}
+            onChange={(event) => setDraft((current) => ({ ...current, supplierName: event.target.value }))}
+          />
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            placeholder="Tedarikçi tahsilatı"
+            value={draft.supplierCollection}
+            onChange={(event) => setDraft((current) => ({ ...current, supplierCollection: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">
+            {request.supplierCollection ? formatMoneyValue(request.supplierCollection, request.currency) : "-"}
+          </div>
+        </div>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.collectedAmount}
+            onChange={(event) => setDraft((current) => ({ ...current, collectedAmount: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{financeCellText(request.collectedAmount, request.currency)}</div>
+        </div>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.agencyPass}
+            onChange={(event) => setDraft((current) => ({ ...current, agencyPass: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{financeCellText(request.agencyPass, request.currency)}</div>
+        </div>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.supplierPass}
+            onChange={(event) => setDraft((current) => ({ ...current, supplierPass: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{financeCellText(request.supplierPass, request.currency)}</div>
+        </div>
+      </Td>
       <Td>{formatMoneyValue(profit, request.currency)}</Td>
       <Td>
         <div className="grid gap-2">

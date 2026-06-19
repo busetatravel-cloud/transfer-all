@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import { getReservationById, updateReservation } from "@/lib/reservation-service";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
@@ -111,11 +112,29 @@ export async function PATCH(
       bookingStatus: normalizeOptionalText(parseBodyField(body, "bookingStatus")),
       vehicleName: normalizeOptionalText(parseBodyField(body, "vehicleName")),
       vehicleCategory: normalizeOptionalText(parseBodyField(body, "vehicleCategory")),
+      supplierName: normalizeOptionalText(parseBodyField(body, "supplierName")),
+      agencyName: normalizeOptionalText(parseBodyField(body, "agencyName")),
+      collectedAmount: parseBodyField(body, "collectedAmount") as string | number | undefined,
+      supplierPass: parseBodyField(body, "supplierPass") as string | number | undefined,
+      agencyPass: parseBodyField(body, "agencyPass") as string | number | undefined,
+      supplierCollection: parseBodyField(body, "supplierCollection") as string | number | undefined,
+      profit: parseBodyField(body, "profit") as string | number | undefined,
       paymentStatus: normalizeOptionalText(parseBodyField(body, "paymentStatus")),
       notes: normalizeOptionalText(parseBodyField(body, "notes")),
       totalAmount: parseBodyField(body, "totalAmount") as string | number | undefined,
       depositAmount: parseBodyField(body, "depositAmount") as string | number | undefined,
       remainingAmount: parseBodyField(body, "remainingAmount") as string | number | undefined,
+    });
+
+    await recordAuditLog({
+      businessId: auth.session.businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "reservation",
+      entityId: id,
+      action: "update",
+      before: existing,
+      after: reservation,
     });
 
     return NextResponse.json({
@@ -160,6 +179,17 @@ export async function DELETE(
     if (hasSupabaseConnection()) {
       await supabaseDeleteReservation(auth.session.businessId, id);
     }
+
+    await recordAuditLog({
+      businessId: auth.session.businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "reservation",
+      entityId: id,
+      action: "delete",
+      before: existing,
+      after: null,
+    });
 
     return NextResponse.json({
       ok: true,

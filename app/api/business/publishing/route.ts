@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import {
   getPublishingCenterData,
   publishBusinessContent,
@@ -49,6 +50,17 @@ export async function POST(request: Request) {
         normalizeAction(body?.note) || "Yayınlandı",
       );
 
+      await recordAuditLog({
+        businessId: auth.session.businessId,
+        actorUserId: auth.session.userId,
+        actorRole: auth.session.role,
+        entityType: "publication",
+        entityId: result.revision.id,
+        action: "publish",
+        before: null,
+        after: result.revision,
+      });
+
       return NextResponse.json({
         ok: true,
         data: result.data,
@@ -58,6 +70,17 @@ export async function POST(request: Request) {
 
     if (action === "rollback") {
       const result = await rollbackBusinessPublication(auth.session.businessId);
+
+      await recordAuditLog({
+        businessId: auth.session.businessId,
+        actorUserId: auth.session.userId,
+        actorRole: auth.session.role,
+        entityType: "publication",
+        entityId: result.revision.id,
+        action: "rollback",
+        before: null,
+        after: result.revision,
+      });
       return NextResponse.json({
         ok: true,
         data: result.data,

@@ -72,10 +72,17 @@ export type BusinessRequestRecord = {
   infants: number;
   vehicleCategory: string | null;
   vehicleName: string | null;
+  supplierName: string | null;
+  agencyName: string | null;
   assignedVehicle: string | null;
   driverName: string | null;
   pickupStatus: string | null;
   operationNotes: string | null;
+  collectedAmount: number | null;
+  supplierPass: number | null;
+  agencyPass: number | null;
+  supplierCollection: number | null;
+  profit: number | null;
   totalAmount: number | null;
   depositAmount: number | null;
   remainingAmount: number | null;
@@ -117,8 +124,15 @@ export type BusinessRequestInput = {
   vehicleCategory?: string;
   vehicleName?: string;
   vehicle?: string;
+  supplierName?: string;
+  agencyName?: string;
   assignedVehicle?: string;
   driverName?: string;
+  collectedAmount?: number | string;
+  supplierPass?: number | string;
+  agencyPass?: number | string;
+  supplierCollection?: number | string;
+  profit?: number | string;
   totalAmount?: number | string;
   total?: number | string;
   depositAmount?: number | string;
@@ -256,10 +270,17 @@ const demoRequests = new Map<string, BusinessRequestRecord[]>([
         infants: 0,
         vehicleCategory: "VIP",
         vehicleName: "VIP Van",
+        supplierName: "Demo Supplier",
+        agencyName: "Demo Agency",
         assignedVehicle: "VIP Van",
         driverName: "Demo Driver",
         pickupStatus: null,
         operationNotes: null,
+        collectedAmount: 300,
+        supplierPass: 120,
+        agencyPass: 80,
+        supplierCollection: 700,
+        profit: 260,
         totalAmount: 1200,
         depositAmount: 300,
         remainingAmount: 900,
@@ -323,10 +344,30 @@ function mapRequest(row: Record<string, unknown>): BusinessRequestRecord {
     infants: Number(row.baby_count ?? 0),
     vehicleCategory: (row.vehicle_category as string | null) ?? null,
     vehicleName: (row.vehicle_name as string | null) ?? null,
+    supplierName: (row.supplier_name as string | null) ?? null,
+    agencyName: (row.agency_name as string | null) ?? null,
     assignedVehicle: (row.assigned_vehicle as string | null) ?? null,
     driverName: (row.driver_name as string | null) ?? null,
     pickupStatus: (row.pickup_status as string | null) ?? null,
     operationNotes: (row.operation_notes as string | null) ?? null,
+    collectedAmount:
+      row.collected_amount === null || row.collected_amount === undefined
+        ? null
+        : Number(row.collected_amount),
+    supplierPass:
+      row.supplier_pass === null || row.supplier_pass === undefined
+        ? null
+        : Number(row.supplier_pass),
+    agencyPass:
+      row.agency_pass === null || row.agency_pass === undefined
+        ? null
+        : Number(row.agency_pass),
+    supplierCollection:
+      row.supplier_collection === null || row.supplier_collection === undefined
+        ? null
+        : Number(row.supplier_collection),
+    profit:
+      row.profit === null || row.profit === undefined ? null : Number(row.profit),
     totalAmount:
       row.total_amount === null || row.total_amount === undefined
         ? null
@@ -366,6 +407,13 @@ function buildRequestPayload(businessId: string, input: BusinessRequestInput) {
   const note = normalizeText(input.notes);
   const fromLocation = normalizeText(input.fromLocation ?? input.origin);
   const toLocation = normalizeText(input.toLocation ?? input.destination);
+  const collectedAmount = normalizeAmount(input.collectedAmount);
+  const supplierPass = normalizeAmount(input.supplierPass);
+  const agencyPass = normalizeAmount(input.agencyPass);
+  const supplierCollection = normalizeAmount(input.supplierCollection);
+  const profit = normalizeAmount(
+    input.profit ?? (collectedAmount ?? 0) + (agencyPass ?? 0) - (supplierPass ?? 0),
+  );
   const message =
     normalizeText(input.message) ??
     buildRequestMessage({
@@ -394,6 +442,13 @@ function buildRequestPayload(businessId: string, input: BusinessRequestInput) {
     baby_count: normalizeCount(input.babyCount ?? input.infants),
     vehicle_category: normalizeText(input.vehicleCategory),
     vehicle_name: normalizeText(input.vehicleName),
+    supplier_name: normalizeText(input.supplierName),
+    agency_name: normalizeText(input.agencyName),
+    collected_amount: collectedAmount,
+    supplier_pass: supplierPass,
+    agency_pass: agencyPass,
+    supplier_collection: supplierCollection,
+    profit,
     total_amount: normalizeAmount(input.totalAmount),
     deposit_amount: normalizeAmount(input.depositAmount),
     remaining_amount: normalizeAmount(input.remainingAmount),
@@ -428,7 +483,7 @@ function logRequestCreateInput(
 export async function getBusinessRequests(businessId: string) {
   if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_status,operation_notes,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
         businessId,
       )}&order=created_at.desc`,
     );
@@ -450,7 +505,7 @@ export async function getBusinessRequestById(
 ) {
   if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_status,operation_notes,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
         requestId,
       )}&business_id=eq.${encodeURIComponent(businessId)}&limit=1`,
     );
@@ -555,10 +610,17 @@ export async function createBusinessRequest(
     infants: payload.baby_count,
     vehicleCategory: payload.vehicle_category,
     vehicleName: (payload.vehicle_name as string | null) ?? null,
+    supplierName: (payload.supplier_name as string | null) ?? null,
+    agencyName: (payload.agency_name as string | null) ?? null,
     assignedVehicle: null,
     driverName: null,
     pickupStatus: null,
     operationNotes: null,
+    collectedAmount: payload.collected_amount as number | null,
+    supplierPass: payload.supplier_pass as number | null,
+    agencyPass: payload.agency_pass as number | null,
+    supplierCollection: payload.supplier_collection as number | null,
+    profit: payload.profit as number | null,
     totalAmount: payload.total_amount as number | null,
     depositAmount: payload.deposit_amount as number | null,
     remainingAmount: payload.remaining_amount as number | null,
@@ -620,6 +682,13 @@ export async function updateBusinessRequestRecord(
     pickupStatus?: string;
     operationNotes?: string;
     bookingStatus?: string;
+    supplierName?: string;
+    agencyName?: string;
+    collectedAmount?: number | string;
+    supplierPass?: number | string;
+    agencyPass?: number | string;
+    supplierCollection?: number | string;
+    profit?: number | string;
   },
 ) {
   const existing = hasSupabaseConnection()
@@ -657,6 +726,46 @@ export async function updateBusinessRequestRecord(
 
   if (input.vehicleCategory !== undefined) {
     nextPayload.vehicle_category = normalizeText(input.vehicleCategory);
+  }
+
+  if (input.supplierName !== undefined) {
+    nextPayload.supplier_name = normalizeText(input.supplierName);
+  }
+
+  if (input.agencyName !== undefined) {
+    nextPayload.agency_name = normalizeText(input.agencyName);
+  }
+
+  if (input.collectedAmount !== undefined) {
+    nextPayload.collected_amount = normalizeAmount(input.collectedAmount);
+  }
+
+  if (input.supplierPass !== undefined) {
+    nextPayload.supplier_pass = normalizeAmount(input.supplierPass);
+  }
+
+  if (input.agencyPass !== undefined) {
+    nextPayload.agency_pass = normalizeAmount(input.agencyPass);
+  }
+
+  if (input.supplierCollection !== undefined) {
+    nextPayload.supplier_collection = normalizeAmount(input.supplierCollection);
+  }
+
+  if (input.profit !== undefined) {
+    nextPayload.profit = normalizeAmount(input.profit);
+  }
+
+  if (
+    input.profit === undefined &&
+    (input.collectedAmount !== undefined ||
+      input.supplierPass !== undefined ||
+      input.agencyPass !== undefined)
+  ) {
+    nextPayload.profit =
+      Number((nextPayload.collected_amount as number | null | undefined) ?? 0) +
+      Number((nextPayload.agency_pass as number | null | undefined) ?? 0) -
+      Number((nextPayload.supplier_pass as number | null | undefined) ?? 0);
   }
 
   if (input.paymentStatus !== undefined) {
@@ -717,6 +826,19 @@ export async function updateBusinessRequestRecord(
       (nextPayload.vehicle_name as string | null | undefined) ?? existing.vehicleName,
     vehicleCategory:
       (nextPayload.vehicle_category as string | null | undefined) ?? existing.vehicleCategory,
+    supplierName:
+      (nextPayload.supplier_name as string | null | undefined) ?? existing.supplierName,
+    agencyName:
+      (nextPayload.agency_name as string | null | undefined) ?? existing.agencyName,
+    collectedAmount:
+      (nextPayload.collected_amount as number | null | undefined) ?? existing.collectedAmount,
+    supplierPass:
+      (nextPayload.supplier_pass as number | null | undefined) ?? existing.supplierPass,
+    agencyPass:
+      (nextPayload.agency_pass as number | null | undefined) ?? existing.agencyPass,
+    supplierCollection:
+      (nextPayload.supplier_collection as number | null | undefined) ?? existing.supplierCollection,
+    profit: (nextPayload.profit as number | null | undefined) ?? existing.profit,
     paymentStatus:
       (nextPayload.payment_status as BusinessRequestRecord["paymentStatus"] | undefined) ??
       existing.paymentStatus,
@@ -772,8 +894,15 @@ function normalizeReservationInput(input: ReservationInput): BusinessRequestInpu
     infants: Number(input.babyCount ?? input.infants ?? 0),
     vehicleCategory: String(input.vehicleCategory ?? "").trim() || undefined,
     vehicleName: String(input.vehicleName ?? "").trim() || undefined,
+    supplierName: String(input.supplierName ?? "").trim() || undefined,
+    agencyName: String(input.agencyName ?? "").trim() || undefined,
     assignedVehicle: String(input.assignedVehicle ?? "").trim() || undefined,
     driverName: String(input.driverName ?? "").trim() || undefined,
+    collectedAmount: String(input.collectedAmount ?? "").trim() || undefined,
+    supplierPass: String(input.supplierPass ?? "").trim() || undefined,
+    agencyPass: String(input.agencyPass ?? "").trim() || undefined,
+    supplierCollection: String(input.supplierCollection ?? "").trim() || undefined,
+    profit: String(input.profit ?? "").trim() || undefined,
     totalAmount: String(input.totalAmount ?? "").trim() || undefined,
     depositAmount: String(input.depositAmount ?? "").trim() || undefined,
     remainingAmount: String(input.remainingAmount ?? "").trim() || undefined,
@@ -836,6 +965,27 @@ export async function updateReservation(
       input.vehicleCategory === undefined
         ? undefined
         : String(input.vehicleCategory).trim(),
+    supplierName:
+      input.supplierName === undefined
+        ? undefined
+        : String(input.supplierName).trim(),
+    agencyName:
+      input.agencyName === undefined
+        ? undefined
+        : String(input.agencyName).trim(),
+    collectedAmount:
+      input.collectedAmount === undefined
+        ? undefined
+        : String(input.collectedAmount).trim(),
+    supplierPass:
+      input.supplierPass === undefined ? undefined : String(input.supplierPass).trim(),
+    agencyPass:
+      input.agencyPass === undefined ? undefined : String(input.agencyPass).trim(),
+    supplierCollection:
+      input.supplierCollection === undefined
+        ? undefined
+        : String(input.supplierCollection).trim(),
+    profit: input.profit === undefined ? undefined : String(input.profit).trim(),
     paymentStatus:
       input.paymentStatus === undefined
         ? undefined
@@ -848,4 +998,39 @@ export async function updateReservation(
   }
 
   return updated;
+}
+
+export async function deleteReservation(businessId: string, recordId: string) {
+  const safeRecordId = String(recordId ?? "").trim();
+
+  if (!safeRecordId) {
+    throw new Error("Rezervasyon bulunamadı.");
+  }
+
+  if (hasSupabaseConnection()) {
+    const response = await supabaseFetch(
+      `/requests?id=eq.${encodeURIComponent(safeRecordId)}&business_id=eq.${encodeURIComponent(
+        businessId,
+      )}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!response?.ok) {
+      throw new Error("Rezervasyon silinemedi.");
+    }
+
+    return true;
+  }
+
+  const current = demoRequests.get(businessId) ?? [];
+  const next = current.filter((item) => item.id !== safeRecordId);
+
+  if (next.length === current.length) {
+    throw new Error("Rezervasyon bulunamadı.");
+  }
+
+  demoRequests.set(businessId, next);
+  return true;
 }

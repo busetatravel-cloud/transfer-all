@@ -101,6 +101,13 @@ function mapReservationRow(reservation: Awaited<ReturnType<typeof listReservatio
     reservation.babyCount,
     reservation.vehicleCategory ?? "",
     reservation.vehicleName ?? "",
+    reservation.supplierName ?? "",
+    reservation.agencyName ?? "",
+    reservation.collectedAmount ?? "",
+    reservation.supplierPass ?? "",
+    reservation.agencyPass ?? "",
+    reservation.supplierCollection ?? "",
+    reservation.profit ?? "",
     reservation.totalAmount ?? "",
     reservation.depositAmount ?? "",
     reservation.remainingAmount ?? "",
@@ -306,6 +313,13 @@ export async function buildExportPreview(
       "Bebek",
       "Araç kategorisi",
       "Araç",
+      "Tedarikçi",
+      "Acente",
+      "Alınan",
+      "Tedarikçi PASS",
+      "Acente PASS",
+      "Tedarikçi tahsilatı",
+      "Kâr",
       "Toplam",
       "Kapora",
       "Kalan",
@@ -358,18 +372,38 @@ export async function buildExportPreview(
   }
 
   if (safeType === "finance") {
-    const totalAmount = reservations.reduce((sum, item) => sum + Number(item.totalAmount ?? 0), 0);
-    const depositAmount = reservations.reduce((sum, item) => sum + Number(item.depositAmount ?? 0), 0);
-    const remainingAmount = reservations.reduce((sum, item) => sum + Number(item.remainingAmount ?? 0), 0);
-    const pendingCount = reservations.filter((item) => item.paymentStatus === "Ödenmedi").length;
-    const headers = ["Metrik", "Değer"];
-    const rows = [
-      ["Toplam rezervasyon", reservations.length],
-      ["Toplam tutar", totalAmount],
-      ["Toplam kapora", depositAmount],
-      ["Toplam kalan", remainingAmount],
-      ["Ödeme bekleyen", pendingCount],
+    const headers = [
+      "Müşteri adı",
+      "Telefon",
+      "Mail",
+      "Ülke",
+      "Dil",
+      "Nereden",
+      "Nereye",
+      "Tarih",
+      "Saat",
+      "Uçuş kodu",
+      "Yetişkin",
+      "Çocuk",
+      "Bebek",
+      "Araç kategorisi",
+      "Araç",
+      "Tedarikçi",
+      "Acente",
+      "Alınan",
+      "Tedarikçi PASS",
+      "Acente PASS",
+      "Tedarikçi tahsilatı",
+      "Kâr",
+      "Toplam",
+      "Kapora",
+      "Kalan",
+      "Para birimi",
+      "Not",
+      "Ödeme durumu",
+      "Durum",
     ];
+    const rows = reservations.map(mapReservationRow);
 
     return {
       exportType: safeType,

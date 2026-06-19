@@ -21,9 +21,19 @@ export const superAdminNav: PanelNavItem[] = [
     description: "Sağlık kartları ve placeholder kontroller",
   },
   {
+    href: "/super-admin/deploy",
+    label: "Deploy",
+    description: "Release, env ve rollback merkezi",
+  },
+  {
     href: "/super-admin/domains",
     label: "Domainlar",
     description: "Tüm bağlı domainler ve aktivasyon kontrolü",
+  },
+  {
+    href: "/super-admin/audit",
+    label: "Audit",
+    description: "Sistem genel değişiklik kayıtları",
   },
   {
     href: "/super-admin#businesses",
@@ -122,6 +132,11 @@ export const businessAdminNav: PanelNavItem[] = [
     href: "/app/notifications",
     label: "Bildirimler",
     description: "Okunmamış ve geçmiş bildirimler",
+  },
+  {
+    href: "/app/audit",
+    label: "Audit",
+    description: "Değişiklik kayıtları",
   },
   {
     href: "/app/operation",

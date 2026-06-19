@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { getBusinessById, type BusinessRecord } from "@/lib/business";
+import { recordAuditLog } from "@/lib/audit";
 import {
   getBusinessRequestById,
   type BusinessRequestRecord,
@@ -304,6 +305,15 @@ export async function syncBusinessVoucherFromRequest(
             relatedType: "voucher",
             relatedId: voucher.id,
           });
+          await recordAuditLog({
+            businessId,
+            actorRole: "BUSINESS_ADMIN",
+            entityType: "voucher",
+            entityId: voucher.id,
+            action: "create",
+            before: null,
+            after: voucher,
+          });
         } catch (error) {
           console.warn("notification.create.failed", {
             businessId,
@@ -352,6 +362,15 @@ export async function syncBusinessVoucherFromRequest(
           message: `${voucher.customerName} için voucher hazırlandı.`,
           relatedType: "voucher",
           relatedId: voucher.id,
+        });
+        await recordAuditLog({
+          businessId,
+          actorRole: "BUSINESS_ADMIN",
+          entityType: "voucher",
+          entityId: voucher.id,
+          action: "create",
+          before: null,
+          after: voucher,
         });
       } catch (error) {
         console.warn("notification.create.failed", {
@@ -410,6 +429,15 @@ export async function syncBusinessVoucherFromRequest(
         message: `${record.customerName} için voucher hazırlandı.`,
         relatedType: "voucher",
         relatedId: record.id,
+      });
+      await recordAuditLog({
+        businessId,
+        actorRole: "BUSINESS_ADMIN",
+        entityType: "voucher",
+        entityId: record.id,
+        action: "create",
+        before: null,
+        after: record,
       });
     } catch (error) {
       console.warn("notification.create.failed", {

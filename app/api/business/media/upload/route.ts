@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import {
   buildBusinessMediaStoragePath,
   createBusinessMediaAsset,
@@ -96,6 +97,17 @@ export async function POST(request: Request) {
       cover,
     },
     sortOrder,
+  });
+
+  await recordAuditLog({
+    businessId: auth.session.businessId,
+    actorUserId: auth.session.userId,
+    actorRole: auth.session.role,
+    entityType: "media",
+    entityId: asset.id,
+    action: "create",
+    before: null,
+    after: asset,
   });
 
   return NextResponse.json({

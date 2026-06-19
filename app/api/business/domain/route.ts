@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import {
   getBusinessById,
   updateBusinessDomainRecord,
@@ -79,6 +80,17 @@ export async function PATCH(request: Request) {
       sslStatus: "pending",
     });
 
+    await recordAuditLog({
+      businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "domain",
+      entityId: businessId,
+      action: "update",
+      before: current,
+      after: business,
+    });
+
     return NextResponse.json({
       ok: true,
       business,
@@ -113,6 +125,17 @@ export async function PATCH(request: Request) {
       sslStatus: "issued",
     });
 
+    await recordAuditLog({
+      businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "domain",
+      entityId: businessId,
+      action: "update",
+      before: current,
+      after: business,
+    });
+
     return NextResponse.json({
       ok: true,
       business,
@@ -122,7 +145,19 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "remove") {
+    const current = await getBusinessById(businessId);
     const business = await updateBusinessOwnDomainRecord(businessId, "");
+
+    await recordAuditLog({
+      businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "domain",
+      entityId: businessId,
+      action: "delete",
+      before: current,
+      after: business,
+    });
 
     return NextResponse.json({
       ok: true,

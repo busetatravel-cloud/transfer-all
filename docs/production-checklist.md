@@ -9,8 +9,8 @@
 
 ## Supabase Migrations
 - [ ] Tüm migrationlar prod ortamda çalıştırıldı.
-- [ ] Reservations schema migrationları uygulandı.
-- [ ] Voucher, notification, analytics, domain ve media migrationları uygulandı.
+- [ ] Rezervasyon şema migrationları uygulandı.
+- [ ] Voucher, notification, analytics, domain, media ve deploy migrationları uygulandı.
 - [ ] `business-media` storage ve ilgili tablo/migrationlar hazır.
 - [ ] Geriye dönük uyumluluk kontrol edildi.
 
@@ -55,7 +55,7 @@
 
 ## Admin Seed
 - [ ] Super admin seed bilgileri tanımlı.
-- [ ] Gerekirse demo seed env’leri ayarlı:
+- [ ] Gerekirse demo seed env'leri ayarlı:
 - [ ] `DEMO_SUPER_ADMIN_EMAIL`
 - [ ] `DEMO_SUPER_ADMIN_PASSWORD`
 - [ ] `DEMO_BUSINESS_ADMIN_EMAIL`
@@ -95,6 +95,7 @@
 
 ### Önerilen
 - `SUPABASE_URL`
+- `BUSINESS_MEDIA_BUCKET`
 - `MAIL_FROM_EMAIL`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
@@ -117,3 +118,4 @@
 - `DEMO_SUPER_ADMIN_PASSWORD`
 - `DEMO_BUSINESS_ADMIN_EMAIL`
 - `DEMO_BUSINESS_ADMIN_PASSWORD`
+

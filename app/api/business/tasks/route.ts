@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import { createTask, listTasks } from "@/lib/tasks";
 
 function normalizeText(value: unknown) {
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
         | "Tamamlandı"
         | "İptal"
         | undefined,
+    });
+
+    await recordAuditLog({
+      businessId: auth.session.businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "task",
+      entityId: task.id,
+      action: "create",
+      before: null,
+      after: task,
     });
 
     return NextResponse.json({ ok: true, task });

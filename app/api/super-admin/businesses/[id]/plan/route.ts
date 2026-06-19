@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireApiRole } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
+import { getBusinessById } from "@/lib/business";
 import { assignPlanToBusiness } from "@/lib/plans";
 
 function normalizeText(value: unknown) {
@@ -22,7 +24,18 @@ export async function PATCH(
   const planId = normalizeText(body?.planId) || null;
 
   try {
+    const beforeBusiness = await getBusinessById(id);
     const business = await assignPlanToBusiness(id, planId);
+    await recordAuditLog({
+      businessId: id,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "plan",
+      entityId: id,
+      action: "update",
+      before: beforeBusiness,
+      after: business,
+    });
     revalidatePath("/super-admin");
     revalidatePath("/super-admin/plans");
     return NextResponse.json({ ok: true, business });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import { createReservation, listReservations } from "@/lib/reservation-service";
 
 function normalizeText(value: unknown) {
@@ -146,6 +147,31 @@ export async function POST(request: Request) {
           parseBodyField(body, "vehicleName") ??
           parseBodyField(body, "vehicle"),
       ),
+      supplierName: normalizeOptionalText(
+        parseBodyField(body, "supplier_name") ?? parseBodyField(body, "supplierName"),
+      ),
+      agencyName: normalizeOptionalText(
+        parseBodyField(body, "agency_name") ?? parseBodyField(body, "agencyName"),
+      ),
+      collectedAmount: normalizeOptionalText(
+        parseBodyField(body, "collected_amount") ??
+          parseBodyField(body, "collectedAmount") ??
+          parseBodyField(body, "collected"),
+      ),
+      supplierPass: normalizeOptionalText(
+        parseBodyField(body, "supplier_pass") ??
+          parseBodyField(body, "supplierPass") ??
+          parseBodyField(body, "supplierPASS"),
+      ),
+      agencyPass: normalizeOptionalText(
+        parseBodyField(body, "agency_pass") ?? parseBodyField(body, "agencyPass"),
+      ),
+      supplierCollection: normalizeOptionalText(
+        parseBodyField(body, "supplier_collection") ??
+          parseBodyField(body, "supplierCollection") ??
+          parseBodyField(body, "vehicleCollection"),
+      ),
+      profit: normalizeOptionalText(parseBodyField(body, "profit")),
       totalAmount: normalizeOptionalText(
         parseBodyField(body, "total_amount") ??
           parseBodyField(body, "totalAmount") ??
@@ -176,6 +202,16 @@ export async function POST(request: Request) {
             parseBodyField(body, "status"),
         ) ?? "Bekliyor",
       message: normalizeOptionalText(parseBodyField(body, "message")),
+    });
+    await recordAuditLog({
+      businessId: auth.session.businessId,
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "reservation",
+      entityId: reservation.id,
+      action: "create",
+      before: null,
+      after: reservation,
     });
 
     return NextResponse.json({

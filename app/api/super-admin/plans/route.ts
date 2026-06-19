@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireApiRole } from "@/lib/auth";
+import { recordAuditLog } from "@/lib/audit";
 import { createPlan, listPlans } from "@/lib/plans";
 
 function normalizeText(value: unknown) {
@@ -48,6 +49,21 @@ export async function POST(request: Request) {
       trialDays: normalizeNumericValue(body?.trialDays ?? body?.trial_days),
       features: (body?.features as string[] | string | undefined) ?? "",
       active: normalizeBoolean(body?.active),
+    });
+
+    if (!plan) {
+      throw new Error("Paket oluşturulamadı.");
+    }
+
+    await recordAuditLog({
+      businessId: "system",
+      actorUserId: auth.session.userId,
+      actorRole: auth.session.role,
+      entityType: "plan",
+      entityId: plan.id,
+      action: "create",
+      before: null,
+      after: plan,
     });
 
     revalidatePath("/super-admin/plans");
