@@ -64,6 +64,16 @@ type ReservationUpdateState = {
 type ReservationDateFilter = "all" | "today" | "tomorrow" | "week";
 type ReservationStatusFilter = "all" | string;
 type ReservationPaymentFilter = "all" | string;
+type TaskFormState = {
+  title: string;
+  description: string;
+  reservationId: string;
+  customerName: string;
+  dueDate: string;
+  dueTime: string;
+  priority: string;
+  status: string;
+};
 
 function emptyCreateForm(): ReservationFormState {
   return {
@@ -88,6 +98,19 @@ function emptyCreateForm(): ReservationFormState {
     currency: "TRY",
     notes: "",
     paymentStatus: "Ödenmedi",
+    status: "Bekliyor",
+  };
+}
+
+function emptyTaskForm(): TaskFormState {
+  return {
+    title: "",
+    description: "",
+    reservationId: "",
+    customerName: "",
+    dueDate: "",
+    dueTime: "",
+    priority: "Normal",
     status: "Bekliyor",
   };
 }
@@ -266,6 +289,9 @@ export function ReservationsModule({ initialReservations }: Props) {
   const [dateFilter, setDateFilter] = useState<ReservationDateFilter>("today");
   const [statusFilter, setStatusFilter] = useState<ReservationStatusFilter>("all");
   const [paymentFilter, setPaymentFilter] = useState<ReservationPaymentFilter>("all");
+  const [taskForm, setTaskForm] = useState<TaskFormState>(emptyTaskForm());
+  const [taskState, setTaskState] = useState<SaveState>({ status: "idle", message: "" });
+  const [taskReservationId, setTaskReservationId] = useState<string | null>(null);
 
   const todayKey = toDateKey(new Date());
 
@@ -304,6 +330,70 @@ export function ReservationsModule({ initialReservations }: Props) {
 
     const next = (body as { reservations?: ReservationRecord[] } | null)?.reservations ?? [];
     setReservations(next);
+  }
+
+  function openTaskForm(reservation: ReservationRecord) {
+    setTaskReservationId(reservation.id);
+    setTaskForm({
+      title: `${reservation.customerName} için görev`,
+      description: `${text(reservation.origin)} → ${text(reservation.destination)}`,
+      reservationId: reservation.id,
+      customerName: reservation.customerName,
+      dueDate: reservation.travelDate ?? "",
+      dueTime: reservation.travelTime ?? "",
+      priority: "Normal",
+      status: "Bekliyor",
+    });
+    setTaskState({ status: "idle", message: "" });
+  }
+
+  async function submitTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTaskState({ status: "saving", message: "Kaydediliyor..." });
+
+    try {
+      const response = await fetch("/api/business/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          action: "create",
+          title: taskForm.title,
+          description: taskForm.description,
+          reservationId: taskForm.reservationId,
+          customerName: taskForm.customerName,
+          dueDate: taskForm.dueDate,
+          dueTime: taskForm.dueTime,
+          priority: taskForm.priority,
+          status: taskForm.status,
+        }),
+      });
+
+      const body = await readResponseBody(response);
+
+      if (!response.ok) {
+        const payload = body as { message?: string; code?: string } | string | null;
+        setTaskState({
+          status: "error",
+          message:
+            typeof payload === "string"
+              ? payload
+              : payload?.message ?? payload?.code ?? "Görev oluşturulamadı.",
+        });
+        return;
+      }
+
+      setTaskState({ status: "success", message: "Görev oluşturuldu." });
+      setTaskForm(emptyTaskForm());
+      setTaskReservationId(null);
+    } catch (error) {
+      setTaskState({
+        status: "error",
+        message: error instanceof Error ? error.message : "Görev oluşturulamadı.",
+      });
+    }
   }
 
   async function patchReservation(
@@ -787,6 +877,112 @@ export function ReservationsModule({ initialReservations }: Props) {
           </div>
         ) : null}
 
+        {taskReservationId ? (
+          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                  Görev oluştur
+                </div>
+                <h3 className="text-lg font-semibold text-slate-950">Rezervasyona bağlı görev</h3>
+              </div>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                type="button"
+                onClick={() => {
+                  setTaskReservationId(null);
+                  setTaskForm(emptyTaskForm());
+                  setTaskState({ status: "idle", message: "" });
+                }}
+              >
+                Kapat
+              </button>
+            </div>
+            {taskState.message ? (
+              <div
+                className={`mb-3 rounded-2xl border px-4 py-3 text-sm ${
+                  taskState.status === "error"
+                    ? "border-rose-200 bg-rose-50 text-rose-700"
+                    : taskState.status === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                }`}
+              >
+                {taskState.message}
+              </div>
+            ) : null}
+            <form className="grid gap-3" onSubmit={submitTask}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field
+                  label="Başlık"
+                  name="taskTitle"
+                  value={taskForm.title}
+                  onChange={(value) => setTaskForm((current) => ({ ...current, title: value }))}
+                />
+                <Field
+                  label="Müşteri"
+                  name="taskCustomer"
+                  value={taskForm.customerName}
+                  onChange={(value) =>
+                    setTaskForm((current) => ({ ...current, customerName: value }))
+                  }
+                />
+                <Field
+                  label="İlgili rezervasyon"
+                  name="taskReservation"
+                  value={taskForm.reservationId}
+                  onChange={(value) =>
+                    setTaskForm((current) => ({ ...current, reservationId: value }))
+                  }
+                />
+                <Field
+                  label="Tarih"
+                  name="taskDueDate"
+                  type="date"
+                  value={taskForm.dueDate}
+                  onChange={(value) => setTaskForm((current) => ({ ...current, dueDate: value }))}
+                />
+                <Field
+                  label="Saat"
+                  name="taskDueTime"
+                  type="time"
+                  value={taskForm.dueTime}
+                  onChange={(value) => setTaskForm((current) => ({ ...current, dueTime: value }))}
+                />
+                <SelectField
+                  label="Öncelik"
+                  name="taskPriority"
+                  value={taskForm.priority}
+                  options={["Düşük", "Normal", "Yüksek", "Acil"]}
+                  onChange={(value) => setTaskForm((current) => ({ ...current, priority: value }))}
+                />
+                <SelectField
+                  label="Durum"
+                  name="taskStatus"
+                  value={taskForm.status}
+                  options={["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal"]}
+                  onChange={(value) => setTaskForm((current) => ({ ...current, status: value }))}
+                />
+              </div>
+              <TextArea
+                label="Açıklama"
+                name="taskDescription"
+                value={taskForm.description}
+                onChange={(value) =>
+                  setTaskForm((current) => ({ ...current, description: value }))
+                }
+              />
+              <button
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                type="submit"
+                disabled={taskState.status === "saving"}
+              >
+                Görev oluştur
+              </button>
+            </form>
+          </div>
+        ) : null}
+
         <div className="grid gap-3">
           {filteredReservations.length ? (
             filteredReservations.map((reservation) => {
@@ -862,6 +1058,13 @@ export function ReservationsModule({ initialReservations }: Props) {
                       onClick={() => (isEditing ? setEditingId(null) : startEdit(reservation))}
                     >
                       {isEditing ? "Kapat" : "Düzenle"}
+                    </button>
+                    <button
+                      className="inline-flex h-10 items-center justify-center rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-semibold text-orange-700 transition hover:border-orange-300 hover:bg-orange-100"
+                      type="button"
+                      onClick={() => openTaskForm(reservation)}
+                    >
+                      Görev oluştur
                     </button>
                   </div>
 

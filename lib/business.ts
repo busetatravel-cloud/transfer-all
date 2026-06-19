@@ -17,6 +17,7 @@ export type BusinessRecord = {
   whatsapp: string | null;
   logoUrl: string | null;
   active: boolean;
+  planId: string | null;
   packageName: string | null;
   packageStart: string | null;
   packageEnd: string | null;
@@ -87,6 +88,7 @@ const demoBusinesses: BusinessRecord[] = [
     whatsapp: "+90 555 000 00 00",
     logoUrl: null,
     active: true,
+    planId: null,
     packageName: "Starter",
     packageStart: "2026-06-01T00:00:00.000Z",
     packageEnd: "2026-07-01T00:00:00.000Z",
@@ -155,6 +157,7 @@ function fromSupabaseBusiness(row: Record<string, unknown>): BusinessRecord {
     whatsapp: (row.whatsapp as string | null) ?? null,
     logoUrl: (row.logo_url as string | null) ?? null,
     active: Boolean(row.active ?? false),
+    planId: (row.plan_id as string | null) ?? null,
     packageName: (row.package_name as string | null) ?? null,
     packageStart: (row.package_start as string | null) ?? null,
     packageEnd: (row.package_end as string | null) ?? null,
@@ -326,7 +329,7 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
   if (config) {
     const [businessRows, adminRows] = await Promise.all([
       readRows(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&order=created_at.desc`,
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
         `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
@@ -409,7 +412,7 @@ export async function getBusinessById(id: string) {
 
   if (config) {
     const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
         id,
       )}&limit=1`,
     );
@@ -436,7 +439,7 @@ export async function getBusinessByDomain(domain: string) {
 
   if (config) {
     const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&domain=eq.${encodeURIComponent(
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&domain=eq.${encodeURIComponent(
         normalizedDomain,
       )}&limit=1`,
     );
@@ -531,6 +534,7 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
         whatsapp: input.whatsapp || null,
         logoUrl: null,
         active: true,
+        planId: null,
         packageName: "Starter",
         packageStart: new Date().toISOString(),
         packageEnd: null,
@@ -588,6 +592,7 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
     whatsapp: input.whatsapp || null,
     logoUrl: null,
     active: true,
+    planId: null,
     packageName: "Starter",
     packageStart: now,
     packageEnd: null,
@@ -1112,6 +1117,13 @@ export type BusinessUpdateInput = {
   logoUrl: string;
 };
 
+export type BusinessSubscriptionUpdateInput = {
+  planId: string | null;
+  packageName: string | null;
+  packageStart: string | null;
+  packageEnd: string | null;
+};
+
 export async function updateBusinessRecord(
   businessId: string,
   input: BusinessUpdateInput,
@@ -1158,6 +1170,55 @@ export async function updateBusinessRecord(
   existing.phone = input.phone.trim() || null;
   existing.whatsapp = input.whatsapp.trim() || null;
   existing.logoUrl = input.logoUrl.trim() || null;
+  existing.updatedAt = new Date().toISOString();
+
+  return existing;
+}
+
+export async function updateBusinessSubscriptionRecord(
+  businessId: string,
+  input: BusinessSubscriptionUpdateInput,
+) {
+  const config = getSupabaseConfig();
+
+  if (config) {
+    const response = await supabaseFetch(
+      `/businesses?id=eq.${encodeURIComponent(businessId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          plan_id: input.planId,
+          package_name: input.packageName,
+          package_start: input.packageStart,
+          package_end: input.packageEnd,
+          updated_at: new Date().toISOString(),
+        }),
+      },
+    );
+
+    if (!response?.ok) {
+      throw new Error("Abonelik guncellenemedi.");
+    }
+
+    const business = await getBusinessById(businessId);
+
+    if (!business) {
+      throw new Error("Business kaydi okunamadi.");
+    }
+
+    return business;
+  }
+
+  const existing = demoBusinesses.find((business) => business.id === businessId);
+
+  if (!existing) {
+    throw new Error("Business bulunamadi.");
+  }
+
+  existing.planId = input.planId;
+  existing.packageName = input.packageName;
+  existing.packageStart = input.packageStart;
+  existing.packageEnd = input.packageEnd;
   existing.updatedAt = new Date().toISOString();
 
   return existing;

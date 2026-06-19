@@ -11,6 +11,16 @@ export const superAdminNav: PanelNavItem[] = [
     description: "Sistem ozeti ve hizli durum",
   },
   {
+    href: "/super-admin/plans",
+    label: "Paketler",
+    description: "Plan tanimlari ve abonelik baglama",
+  },
+  {
+    href: "/super-admin/system-status",
+    label: "Sistem Durumu",
+    description: "Saglik kartlari ve placeholder kontroller",
+  },
+  {
     href: "/super-admin#businesses",
     label: "Businesses",
     description: "Firma listesi ve hesaplar",
@@ -74,9 +84,34 @@ export const businessAdminNav: PanelNavItem[] = [
     description: "Dil icerikleri",
   },
   {
+    href: "/app/publishing",
+    label: "Yayın Merkezi",
+    description: "Taslak, önizleme ve yayın geçmişi",
+  },
+  {
+    href: "/app/export",
+    label: "Export / Yedek",
+    description: "CSV önizleme ve kopyalama",
+  },
+  {
     href: "/app/reservations",
     label: "Reservations",
     description: "Rezervasyonlar",
+  },
+  {
+    href: "/app/tasks",
+    label: "Görevler",
+    description: "Hatırlatmalar ve iş akışları",
+  },
+  {
+    href: "/app/search",
+    label: "Arama",
+    description: "Global business araması",
+  },
+  {
+    href: "/app/notifications",
+    label: "Bildirimler",
+    description: "Okunmamış ve geçmiş bildirimler",
   },
   {
     href: "/app/operation",

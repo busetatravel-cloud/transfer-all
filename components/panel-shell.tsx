@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import type { PanelNavItem } from "@/lib/navigation";
 
 type PanelShellProps = {
@@ -24,6 +24,7 @@ export function PanelShell({
 }: PanelShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [search, setSearch] = useState("");
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -31,10 +32,22 @@ export function PanelShell({
     router.refresh();
   }
 
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = search.trim();
+
+    if (!query) {
+      router.push("/app/search");
+      return;
+    }
+
+    router.push(`/app/search?q=${encodeURIComponent(query)}`);
+  }
+
   return (
     <div className="min-h-screen px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1520px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="surface-strong flex flex-col rounded-[28px] p-5">
+        <aside className="surface-strong flex flex-col rounded-[28px] p-5 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:overflow-y-auto">
           <div className="rounded-[24px] bg-slate-950 px-5 py-6 text-white">
             <p className="text-xs uppercase tracking-[0.24em] text-orange-300">
               {accentLabel}
@@ -83,7 +96,7 @@ export function PanelShell({
           </div>
         </aside>
 
-        <div className="grid gap-4">
+        <div className="grid min-w-0 gap-4">
           <header className="surface-strong rounded-[28px] px-6 py-5 lg:px-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -104,6 +117,21 @@ export function PanelShell({
                 </span>
               </div>
             </div>
+
+            <form className="mt-5 flex flex-col gap-3 sm:flex-row" onSubmit={handleSearch}>
+              <input
+                className="h-12 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Global arama: rezervasyon, müşteri, görev..."
+                value={search}
+              />
+              <button
+                className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                type="submit"
+              >
+                Ara
+              </button>
+            </form>
           </header>
 
           <main className="surface-strong rounded-[28px] p-6 lg:p-8">

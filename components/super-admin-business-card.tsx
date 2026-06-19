@@ -148,6 +148,12 @@ export function SuperAdminBusinessCard({ business }: Props) {
         <Detail label="Business email" value={business.email} />
         <Detail label="Domain" value={business.domain ?? "Not set"} />
         <Detail label="Status" value={business.domainStatus} />
+        <Detail label="Paket" value={business.packageName ?? "Plan yok"} />
+        <Detail
+          label="Abonelik durumu"
+          value={getSubscriptionStatus(business.packageEnd)}
+        />
+        <Detail label="Bitiş tarihi" value={formatDateTime(business.packageEnd)} />
         {hasAdmin ? (
           <>
             <Detail label="Admin email" value={admin?.email ?? "Admin yok"} />
@@ -312,4 +318,18 @@ function formatDateTime(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function getSubscriptionStatus(endDate: string | null) {
+  if (!endDate) {
+    return "Aktif";
+  }
+
+  const date = new Date(endDate);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Aktif";
+  }
+
+  return date.getTime() >= Date.now() ? "Aktif" : "Süresi doldu";
 }

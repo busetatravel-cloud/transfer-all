@@ -6,6 +6,7 @@ import {
   getBusinessRequestById,
   type BusinessRequestRecord,
 } from "@/lib/requests";
+import { createNotification } from "@/lib/notifications";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessVoucherRecord = {
@@ -243,6 +244,7 @@ export async function syncBusinessVoucherFromRequest(
   }
 
   const existing = await getBusinessVoucherByRequestId(businessId, request.id);
+  const isNewVoucher = !existing;
   const payload = buildVoucherSeed(business, request, existing);
 
   if (hasSupabaseConnection()) {
@@ -292,10 +294,28 @@ export async function syncBusinessVoucherFromRequest(
     >;
 
     if (rows[0]) {
-      return mapVoucher(rows[0]);
+      const voucher = mapVoucher(rows[0]);
+      if (isNewVoucher) {
+        try {
+          await createNotification(businessId, {
+            type: "Voucher hazır",
+            title: `Voucher hazır: ${voucher.documentNo}`,
+            message: `${voucher.customerName} için voucher hazırlandı.`,
+            relatedType: "voucher",
+            relatedId: voucher.id,
+          });
+        } catch (error) {
+          console.warn("notification.create.failed", {
+            businessId,
+            type: "Voucher hazır",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return voucher;
     }
 
-    return {
+    const voucher = {
       id: existing?.id ?? randomUUID(),
       businessId,
       requestId: request.id,
@@ -323,6 +343,26 @@ export async function syncBusinessVoucherFromRequest(
       createdAt: existing?.createdAt ?? nowIso(),
       updatedAt: nowIso(),
     } satisfies BusinessVoucherRecord;
+
+    if (isNewVoucher) {
+      try {
+        await createNotification(businessId, {
+          type: "Voucher hazır",
+          title: `Voucher hazır: ${voucher.documentNo}`,
+          message: `${voucher.customerName} için voucher hazırlandı.`,
+          relatedType: "voucher",
+          relatedId: voucher.id,
+        });
+      } catch (error) {
+        console.warn("notification.create.failed", {
+          businessId,
+          type: "Voucher hazır",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return voucher;
   }
 
   const record: BusinessVoucherRecord = {
@@ -361,6 +401,24 @@ export async function syncBusinessVoucherFromRequest(
       ? current.map((entry) => (entry.requestId === request.id ? record : entry))
       : [record, ...current],
   );
+
+  if (isNewVoucher) {
+    try {
+      await createNotification(businessId, {
+        type: "Voucher hazır",
+        title: `Voucher hazır: ${record.documentNo}`,
+        message: `${record.customerName} için voucher hazırlandı.`,
+        relatedType: "voucher",
+        relatedId: record.id,
+      });
+    } catch (error) {
+      console.warn("notification.create.failed", {
+        businessId,
+        type: "Voucher hazır",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   return record;
 }

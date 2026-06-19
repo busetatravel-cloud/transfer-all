@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { upsertBusinessCustomerFromReservation } from "@/lib/customers";
 import { formatPaymentStatusLabel } from "@/lib/request-statuses";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
+import { createNotification } from "@/lib/notifications";
 
 export type BookingStatus =
   | "Bekliyor"
@@ -512,6 +513,21 @@ export async function createBusinessRequest(
           error: error instanceof Error ? error.message : String(error),
         });
       }
+      try {
+        await createNotification(businessId, {
+          type: "Yeni rezervasyon",
+          title: `Yeni rezervasyon: ${created.customerName}`,
+          message: `${created.customerName} için yeni rezervasyon oluşturuldu.`,
+          relatedType: "reservation",
+          relatedId: created.id,
+        });
+      } catch (error) {
+        console.warn("notification.create.failed", {
+          businessId,
+          type: "Yeni rezervasyon",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       return created;
     }
 
@@ -574,6 +590,21 @@ export async function createBusinessRequest(
     console.warn("voucher.create.failed", {
       businessId,
       requestId: record.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  try {
+    await createNotification(businessId, {
+      type: "Yeni rezervasyon",
+      title: `Yeni rezervasyon: ${record.customerName}`,
+      message: `${record.customerName} için yeni rezervasyon oluşturuldu.`,
+      relatedType: "reservation",
+      relatedId: record.id,
+    });
+  } catch (error) {
+    console.warn("notification.create.failed", {
+      businessId,
+      type: "Yeni rezervasyon",
       error: error instanceof Error ? error.message : String(error),
     });
   }

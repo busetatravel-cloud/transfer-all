@@ -3,6 +3,10 @@ import "server-only";
 import { headers } from "next/headers";
 import { getActiveBusinessByDomain, getBusinessById } from "@/lib/business";
 import { getBusinessPanelData, type BusinessPanelData } from "@/lib/business-panel";
+import {
+  getPublishedBusinessPanelDataByBusinessId,
+  ensureBusinessPublicationSeeded,
+} from "@/lib/publishing";
 import { isPlatformHost, normalizeHost } from "@/lib/platform";
 
 export async function getPublicSiteDataByHost(
@@ -20,7 +24,8 @@ export async function getPublicSiteDataByHost(
     return null;
   }
 
-  return getBusinessPanelData(business.id);
+  await ensureBusinessPublicationSeeded(business.id);
+  return getPublishedBusinessPanelDataByBusinessId(business.id);
 }
 
 export async function getPublicSiteDataFromRequest() {

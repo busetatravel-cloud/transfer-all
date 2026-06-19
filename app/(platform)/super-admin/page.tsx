@@ -1,6 +1,7 @@
 import { BusinessCreateForm } from "@/components/business-create-form";
 import { SuperAdminBusinessCard } from "@/components/super-admin-business-card";
 import { listBusinesses } from "@/lib/business";
+import { listPlans } from "@/lib/plans";
 import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +16,10 @@ const metrics = [
 
 export default async function SuperAdminPage() {
   await requireRole("SUPER_ADMIN");
-  const businesses = await listBusinesses();
+  const [businesses, plans] = await Promise.all([listBusinesses(), listPlans()]);
   const overviewMetrics = [
     { ...metrics[0], value: String(businesses.length) },
-    metrics[1],
+    { ...metrics[1], value: String(plans.filter((plan) => plan.active).length) },
     metrics[2],
     metrics[3],
   ];
