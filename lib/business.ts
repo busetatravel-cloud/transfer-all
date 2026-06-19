@@ -7,6 +7,11 @@ import {
   isReservedPlatformDomain,
   normalizeDomain,
 } from "@/lib/platform";
+import {
+  buildDomainVerificationToken,
+  type DomainSslStatus,
+  type DomainStatus,
+} from "@/lib/domain-utils";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessRecord = {
@@ -22,7 +27,13 @@ export type BusinessRecord = {
   packageStart: string | null;
   packageEnd: string | null;
   domain: string | null;
-  domainStatus: "pending" | "verified" | "active";
+  hostname: string | null;
+  verificationToken: string | null;
+  verifiedAt: string | null;
+  activatedAt: string | null;
+  lastCheckedAt: string | null;
+  sslStatus: DomainSslStatus;
+  domainStatus: DomainStatus;
   createdAt: string;
   updatedAt: string;
 };
@@ -70,8 +81,14 @@ export type BusinessCreateInput = {
 };
 
 export type BusinessDomainUpdateInput = {
-  domain: string;
-  domainStatus: BusinessRecord["domainStatus"];
+  domain?: string;
+  hostname?: string;
+  domainStatus?: BusinessRecord["domainStatus"];
+  verificationToken?: string | null;
+  verifiedAt?: string | null;
+  activatedAt?: string | null;
+  lastCheckedAt?: string | null;
+  sslStatus?: BusinessRecord["sslStatus"] | null;
 };
 
 export type BusinessCreateResult = {
@@ -93,6 +110,12 @@ const demoBusinesses: BusinessRecord[] = [
     packageStart: "2026-06-01T00:00:00.000Z",
     packageEnd: "2026-07-01T00:00:00.000Z",
     domain: "demo-transfer.local",
+    hostname: "demo-transfer.local",
+    verificationToken: "demo-verification-token",
+    verifiedAt: "2026-06-01T00:00:00.000Z",
+    activatedAt: "2026-06-01T00:00:00.000Z",
+    lastCheckedAt: "2026-06-01T00:00:00.000Z",
+    sslStatus: "active",
     domainStatus: "active",
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
@@ -162,7 +185,13 @@ function fromSupabaseBusiness(row: Record<string, unknown>): BusinessRecord {
     packageStart: (row.package_start as string | null) ?? null,
     packageEnd: (row.package_end as string | null) ?? null,
     domain: (row.domain as string | null) ?? null,
-    domainStatus: (row.domain_status as BusinessRecord["domainStatus"]) ?? "pending",
+    hostname: (row.hostname as string | null) ?? null,
+    verificationToken: (row.verification_token as string | null) ?? null,
+    verifiedAt: (row.verified_at as string | null) ?? null,
+    activatedAt: (row.activated_at as string | null) ?? null,
+    lastCheckedAt: (row.last_checked_at as string | null) ?? null,
+    sslStatus: (row.ssl_status as DomainSslStatus) ?? "pending",
+    domainStatus: (row.domain_status as DomainStatus) ?? "pending",
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
   };
@@ -329,7 +358,7 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
   if (config) {
     const [businessRows, adminRows] = await Promise.all([
       readRows(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&order=created_at.desc`,
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
         `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
@@ -412,7 +441,7 @@ export async function getBusinessById(id: string) {
 
   if (config) {
     const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
         id,
       )}&limit=1`,
     );
@@ -439,7 +468,7 @@ export async function getBusinessByDomain(domain: string) {
 
   if (config) {
     const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,domain_status,created_at,updated_at&domain=eq.${encodeURIComponent(
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&domain=eq.${encodeURIComponent(
         normalizedDomain,
       )}&limit=1`,
     );
@@ -477,7 +506,7 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
   const normalizedAdminEmail = input.adminEmail.trim().toLowerCase();
 
   if (normalizedDomain && isReservedPlatformDomain(normalizedDomain)) {
-    throw new Error("Platform domain business domain olarak kullanÄ±lamaz.");
+    throw new Error("Platform domain business domain olarak kullanılamaz.");
   }
 
   if (config) {
@@ -539,6 +568,12 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
         packageStart: new Date().toISOString(),
         packageEnd: null,
         domain: normalizedDomain,
+        hostname: normalizedDomain,
+        verificationToken: normalizedDomain ? buildDomainVerificationToken() : null,
+        verifiedAt: null,
+        activatedAt: null,
+        lastCheckedAt: normalizedDomain ? new Date().toISOString() : null,
+        sslStatus: "pending",
         domainStatus: "pending",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -581,7 +616,7 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
         user.role === "BUSINESS_ADMIN",
     )
   ) {
-    throw new Error("Bu admin emaili zaten kullanÄ±lÄ±yor.");
+    throw new Error("Bu admin emaili zaten kullanılıyor.");
   }
 
   const business: BusinessRecord = {
@@ -597,6 +632,12 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
     packageStart: now,
     packageEnd: null,
     domain: normalizedDomain,
+    hostname: normalizedDomain,
+    verificationToken: normalizedDomain ? buildDomainVerificationToken() : null,
+    verifiedAt: null,
+    activatedAt: null,
+    lastCheckedAt: normalizedDomain ? now : null,
+    sslStatus: "pending",
     domainStatus: normalizedDomain ? "pending" : "pending",
     createdAt: now,
     updatedAt: now,
@@ -641,10 +682,30 @@ export async function updateBusinessDomainRecord(
   input: BusinessDomainUpdateInput,
 ) {
   const config = getSupabaseConfig();
-  const normalizedDomain = normalizeStoredDomain(input.domain);
+  const currentBusiness = await getBusinessById(businessId);
+  const normalizedDomain = normalizeStoredDomain(input.domain ?? input.hostname);
+  const nextHostname = normalizedDomain;
+  const nextVerificationToken =
+    input.verificationToken ?? currentBusiness?.verificationToken ?? null;
+  const nextVerifiedAt = input.verifiedAt ?? currentBusiness?.verifiedAt ?? null;
+  const nextActivatedAt = input.activatedAt ?? currentBusiness?.activatedAt ?? null;
+  const nextLastCheckedAt = input.lastCheckedAt ?? currentBusiness?.lastCheckedAt ?? null;
+  const nextSslStatus = (input.sslStatus ?? currentBusiness?.sslStatus ?? "pending") as DomainSslStatus;
+  const nextDomainStatus = (input.domainStatus ?? currentBusiness?.domainStatus ?? "pending") as DomainStatus;
+  const patchBody = {
+    domain: normalizedDomain,
+    hostname: nextHostname,
+    verification_token: normalizedDomain ? nextVerificationToken ?? buildDomainVerificationToken() : null,
+    verified_at: normalizedDomain ? nextVerifiedAt : null,
+    activated_at: normalizedDomain ? nextActivatedAt : null,
+    last_checked_at: normalizedDomain ? nextLastCheckedAt : null,
+    ssl_status: normalizedDomain ? nextSslStatus : "pending",
+    domain_status: normalizedDomain ? nextDomainStatus : "pending",
+    updated_at: new Date().toISOString(),
+  };
 
   if (normalizedDomain && isReservedPlatformDomain(normalizedDomain)) {
-    throw new Error("Platform domain business domain olarak kullanÄ±lamaz.");
+    throw new Error("Platform domain business domain olarak kullanılamaz.");
   }
 
   if (config) {
@@ -659,7 +720,7 @@ export async function updateBusinessDomainRecord(
     if (existing?.ok) {
       const rows = (await existing.json()) as Array<Record<string, unknown>>;
       if (rows[0] && String(rows[0].id ?? "") !== businessId) {
-        throw new Error("Domain baÅŸka bir business tarafÄ±ndan kullanÄ±lÄ±yor.");
+        throw new Error("Domain başka bir business tarafından kullanılıyor.");
       }
     }
 
@@ -667,16 +728,12 @@ export async function updateBusinessDomainRecord(
       `/businesses?id=eq.${encodeURIComponent(businessId)}`,
       {
         method: "PATCH",
-        body: JSON.stringify({
-          domain: normalizedDomain,
-          domain_status: normalizedDomain ? input.domainStatus : "pending",
-          updated_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify(patchBody),
       },
     );
 
     if (!response?.ok) {
-      throw new Error("Domain gÃ¼ncellenemedi.");
+      throw new Error("Domain güncellenemedi.");
     }
 
     const business = await getBusinessById(businessId);
@@ -702,11 +759,18 @@ export async function updateBusinessDomainRecord(
         business.domain?.toLowerCase() === normalizedDomain,
     )
   ) {
-    throw new Error("Domain baÅŸka bir business tarafÄ±ndan kullanÄ±lÄ±yor.");
+    throw new Error("Domain başka bir business tarafından kullanılıyor.");
   }
 
   existing.domain = normalizedDomain;
-  existing.domainStatus = normalizedDomain ? input.domainStatus : "pending";
+  existing.hostname = nextHostname;
+  existing.verificationToken =
+    normalizedDomain ? nextVerificationToken ?? buildDomainVerificationToken() : null;
+  existing.verifiedAt = normalizedDomain ? nextVerifiedAt : null;
+  existing.activatedAt = normalizedDomain ? nextActivatedAt : null;
+  existing.lastCheckedAt = normalizedDomain ? nextLastCheckedAt : null;
+  existing.sslStatus = normalizedDomain ? nextSslStatus : "pending";
+  existing.domainStatus = normalizedDomain ? nextDomainStatus : "pending";
   existing.updatedAt = new Date().toISOString();
 
   return existing;
@@ -718,9 +782,10 @@ export async function updateBusinessOwnDomainRecord(
 ) {
   const config = getSupabaseConfig();
   const normalizedDomain = normalizeStoredDomain(domainInput);
+  const currentBusiness = await getBusinessById(businessId);
 
   if (normalizedDomain && isReservedPlatformDomain(normalizedDomain)) {
-    throw new Error("Platform domain business domain olarak kullanÄ±lamaz.");
+    throw new Error("Platform domain business domain olarak kullanılamaz.");
   }
 
   if (config) {
@@ -735,7 +800,7 @@ export async function updateBusinessOwnDomainRecord(
     if (existing?.ok) {
       const rows = (await existing.json()) as Array<Record<string, unknown>>;
       if (rows[0] && String(rows[0].id ?? "") !== businessId) {
-        throw new Error("Bu domain zaten kullanÄ±lÄ±yor.");
+        throw new Error("Bu domain zaten kullanılıyor.");
       }
     }
 
@@ -745,6 +810,14 @@ export async function updateBusinessOwnDomainRecord(
         method: "PATCH",
         body: JSON.stringify({
           domain: normalizedDomain,
+          hostname: normalizedDomain,
+          verification_token: normalizedDomain
+            ? currentBusiness?.verificationToken ?? buildDomainVerificationToken()
+            : null,
+          verified_at: null,
+          activated_at: null,
+          last_checked_at: normalizedDomain ? new Date().toISOString() : null,
+          ssl_status: normalizedDomain ? "pending" : "pending",
           domain_status: "pending" as BusinessRecord["domainStatus"],
           updated_at: new Date().toISOString(),
         }),
@@ -778,10 +851,18 @@ export async function updateBusinessOwnDomainRecord(
         business.domain?.toLowerCase() === normalizedDomain,
     )
   ) {
-    throw new Error("Bu domain zaten kullanÄ±lÄ±yor.");
+    throw new Error("Bu domain zaten kullanılıyor.");
   }
 
   existing.domain = normalizedDomain;
+  existing.hostname = normalizedDomain;
+  existing.verificationToken = normalizedDomain
+    ? currentBusiness?.verificationToken ?? buildDomainVerificationToken()
+    : null;
+  existing.verifiedAt = null;
+  existing.activatedAt = null;
+  existing.lastCheckedAt = normalizedDomain ? new Date().toISOString() : null;
+  existing.sslStatus = "pending";
   existing.domainStatus = "pending";
   existing.updatedAt = new Date().toISOString();
 

@@ -76,15 +76,15 @@ const MEDIA_SLOT_FIELDS: Array<{
   description: string;
 }> = [
   { kind: "logo", label: "Logo", description: "Marka logosu ve kurumsal kimlik." },
-  { kind: "hero", label: "Hero", description: "Ana sayfa kapak gÃ¶rseli." },
-  { kind: "service_cover", label: "Hizmet", description: "Hizmet kapak gÃ¶rseli." },
-  { kind: "vehicle_cover", label: "AraÃ§ kapak", description: "AraÃ§ listesi iÃ§in kapak." },
-  { kind: "vehicle_interior", label: "Ä°Ã§ gÃ¶rÃ¼nÃ¼m", description: "AraÃ§ iÃ§ fotoÄŸrafÄ±." },
-  { kind: "vehicle_exterior", label: "DÄ±ÅŸ gÃ¶rÃ¼nÃ¼m", description: "AraÃ§ dÄ±ÅŸ fotoÄŸrafÄ±." },
-  { kind: "vehicle_trunk", label: "Bagaj", description: "Bagaj fotoÄŸrafÄ±." },
-  { kind: "vehicle_seat", label: "Koltuk", description: "Koltuk dÃ¼zeni." },
-  { kind: "route_cover", label: "Rota", description: "Rota kapak gÃ¶rseli." },
-  { kind: "blog_cover", label: "Blog", description: "Blog kapak gÃ¶rseli." },
+  { kind: "hero", label: "Hero", description: "Ana sayfa kapak görseli." },
+  { kind: "service_cover", label: "Hizmet", description: "Hizmet kapak görseli." },
+  { kind: "vehicle_cover", label: "Araç kapak", description: "Araç listesi için kapak." },
+  { kind: "vehicle_interior", label: "İç görünüm", description: "Araç iç fotoğrafı." },
+  { kind: "vehicle_exterior", label: "Dış görünüm", description: "Araç dış fotoğrafı." },
+  { kind: "vehicle_trunk", label: "Bagaj", description: "Bagaj fotoğrafı." },
+  { kind: "vehicle_seat", label: "Koltuk", description: "Koltuk düzeni." },
+  { kind: "route_cover", label: "Rota", description: "Rota kapak görseli." },
+  { kind: "blog_cover", label: "Blog", description: "Blog kapak görseli." },
 ];
 
 const BOOKING_STATUS_OPTIONS = [
@@ -179,7 +179,7 @@ async function readErrorResponse(response: Response) {
 }
 
 const RESERVATION_FIELD_LABELS: Record<string, string> = {
-  customerName: "MÃ¼ÅŸteri adÄ±",
+  customerName: "Müşteri adı",
   origin: "Nereden",
   destination: "Nereye",
   travelDate: "Tarih",
@@ -283,7 +283,7 @@ function buildCustomerViews(panel: BusinessPanelData) {
 
     const history = matchedRequests.map((request) => ({
       id: request.id,
-      label: `${request.travelDate ?? "-"} ${request.origin ?? "-"} â†’ ${request.destination ?? "-"}`,
+      label: `${request.travelDate ?? "-"} ${request.origin ?? "-"} → ${request.destination ?? "-"}`,
       amount: Number(request.totalAmount ?? 0),
       status: formatPanelBookingStatusLabel(request.bookingStatus),
     }));
@@ -305,16 +305,59 @@ type FinanceSummary = {
   depositCollected: number;
   remainingCollection: number;
   collectedInVehicle: number;
+  paidTotal: number;
+  refundTotal: number;
 };
 
 function toMoney(value: number | null | undefined) {
   return Number.isFinite(Number(value ?? 0)) ? Number(value ?? 0) : 0;
 }
 
+function formatMoneyValue(value: number, currency?: string | null) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const formatted = new Intl.NumberFormat("tr-TR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
+
+  const safeCurrency = String(currency ?? "").trim();
+  return safeCurrency ? `${formatted} ${safeCurrency}` : formatted;
+}
+
+function formatFinanceSummaryValue(value: number, currency?: string | null) {
+  return formatMoneyValue(value, currency);
+}
+
+function financeCellText(value: number | null | undefined, currency?: string | null) {
+  return formatMoneyValue(toMoney(value), currency);
+}
+
+function normalizeFilterValue(value: string) {
+  const safe = String(value ?? "").trim();
+  return safe && safe !== "all" ? safe : "";
+}
+
+function buildFinanceSummaryCurrency(operations: OperationView[]) {
+  const currencies = Array.from(
+    new Set(
+      operations
+        .map((request) => String(request.currency ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return currencies.length === 1 ? currencies[0] : null;
+}
+
 function buildFinanceSummary(operations: OperationView[]) {
   const depositCollectedStatus = PAYMENT_STATUS_OPTIONS[1];
   const paidStatus = PAYMENT_STATUS_OPTIONS[2];
   const vehicleStatus = PAYMENT_STATUS_OPTIONS[3];
+  const openBalanceStatuses = new Set<string>([
+    PAYMENT_STATUS_OPTIONS[0],
+    PAYMENT_STATUS_OPTIONS[1],
+  ]);
+  const refundStatuses = new Set<string>([PAYMENT_STATUS_OPTIONS[4], PAYMENT_STATUS_OPTIONS[5]]);
 
   return operations.reduce<FinanceSummary>(
     (summary, request) => {
@@ -329,12 +372,20 @@ function buildFinanceSummary(operations: OperationView[]) {
         summary.depositCollected += deposit || total;
       }
 
-      if (paymentStatus === paidStatus) {
+      if (openBalanceStatuses.has(paymentStatus)) {
         summary.remainingCollection += remaining || Math.max(total - deposit, 0);
+      }
+
+      if (paymentStatus === paidStatus) {
+        summary.paidTotal += total;
       }
 
       if (paymentStatus === vehicleStatus) {
         summary.collectedInVehicle += remaining || total;
+      }
+
+      if (refundStatuses.has(paymentStatus)) {
+        summary.refundTotal += total;
       }
 
       return summary;
@@ -344,6 +395,8 @@ function buildFinanceSummary(operations: OperationView[]) {
       depositCollected: 0,
       remainingCollection: 0,
       collectedInVehicle: 0,
+      paidTotal: 0,
+      refundTotal: 0,
     },
   );
 }
@@ -359,6 +412,11 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
     useState<PreviewViewport>("desktop");
   const [operationFilter, setOperationFilter] =
     useState<OperationFilter>("today");
+  const [financeDateFilter, setFinanceDateFilter] = useState("");
+  const [financePaymentFilter, setFinancePaymentFilter] = useState("all");
+  const [financeCurrencyFilter, setFinanceCurrencyFilter] = useState("all");
+  const [financeSourceFilter, setFinanceSourceFilter] = useState("all");
+  const [financeQuery, setFinanceQuery] = useState("");
   const previewUrl = panel.business?.domain ? `https://${panel.business.domain}` : null;
   const todayKey = toDateKey(new Date());
   const operations = panel.requests.slice().sort(compareOperations);
@@ -376,7 +434,73 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
   const customerViews = buildCustomerViews(panel).sort(
     (left, right) => right.updatedAt.localeCompare(left.updatedAt),
   );
-  const financeSummary = buildFinanceSummary(operations);
+  const financeFilterOptions = (() => {
+    const sources = new Set<string>();
+    const currencies = new Set<string>();
+
+    for (const request of operations) {
+      const source = String(request.source ?? "").trim();
+      const currency = String(request.currency ?? "").trim();
+
+      if (source) {
+        sources.add(source);
+      }
+
+      if (currency) {
+        currencies.add(currency);
+      }
+    }
+
+    return {
+      sources: Array.from(sources).sort((left, right) => left.localeCompare(right)),
+      currencies: Array.from(currencies).sort((left, right) => left.localeCompare(right)),
+    };
+  })();
+  const financeRows = (() => {
+    const query = financeQuery.trim().toLowerCase();
+    const selectedDate = financeDateFilter.trim();
+    const selectedPayment = normalizeFilterValue(financePaymentFilter);
+    const selectedCurrency = normalizeFilterValue(financeCurrencyFilter);
+    const selectedSource = normalizeFilterValue(financeSourceFilter);
+
+    return operations.filter((request) => {
+      const date = String(request.travelDate ?? "").trim();
+      const paymentStatus = formatPaymentStatusLabel(request.paymentStatus);
+      const currency = String(request.currency ?? "").trim();
+      const source = String(request.source ?? "").trim();
+      const customer = String(request.customerName ?? "").trim().toLowerCase();
+      const route = [request.origin, request.destination]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const phone = String(request.phone ?? "").trim().toLowerCase();
+      const flight = String(request.flightCode ?? "").trim().toLowerCase();
+
+      if (selectedDate && date !== selectedDate) {
+        return false;
+      }
+
+      if (selectedPayment && paymentStatus !== selectedPayment) {
+        return false;
+      }
+
+      if (selectedCurrency && currency !== selectedCurrency) {
+        return false;
+      }
+
+      if (selectedSource && source !== selectedSource) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [customer, phone, route, flight].some((value) => value.includes(query));
+    });
+  })();
+  const financeSummary = buildFinanceSummary(financeRows);
+  const financeSummaryCurrency = buildFinanceSummaryCurrency(financeRows);
   const show = (...modules: Array<NonNullable<Props["module"]>>) =>
     module === "dashboard" ? true : modules.includes(module);
 
@@ -396,6 +520,59 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
       if (!response.ok) {
         const body = await readErrorResponse(response);
 
+        setState({
+          status: "error",
+          message:
+            typeof body === "string"
+              ? body
+              : formatPanelErrorDetailed(
+                  body as
+                    | {
+                        error?: string;
+                        message?: string;
+                        fieldErrors?: Record<string, string>;
+                        code?: string;
+                      }
+                    | null,
+                ),
+        });
+        return false;
+      }
+    } catch (error) {
+      setState({
+        status: "error",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Baglanti kurulamadi. Lutfen tekrar deneyin.",
+      });
+      return false;
+    }
+
+    setState({
+      status: "saved",
+      message: successMessage,
+    });
+
+    startTransition(() => {
+      router.refresh();
+    });
+
+    return true;
+  }
+
+  async function uploadMediaAsset(formData: FormData, successMessage: string) {
+    setState({ status: "saving", message: "Yükleniyor..." });
+
+    try {
+      const response = await fetch("/api/business/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const body = await readErrorResponse(response);
+
+      if (!response.ok) {
         setState({
           status: "error",
           message:
@@ -502,6 +679,77 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
     return true;
   }
 
+  async function exportFinanceCsv() {
+    setState({ status: "saving", message: "CSV hazırlanıyor..." });
+
+    try {
+      const response = await fetch("/api/business/export?type=finance", {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      const body = await readErrorResponse(response);
+
+      if (!response.ok) {
+        setState({
+          status: "error",
+          message:
+            typeof body === "string"
+              ? body
+              : formatPanelErrorDetailed(
+                  body as
+                    | {
+                        error?: string;
+                        message?: string;
+                        fieldErrors?: Record<string, string>;
+                        code?: string;
+                      }
+                    | null,
+                ),
+        });
+        return false;
+      }
+
+      const csv = typeof body === "object" && body && "preview" in body
+        ? String((body as { preview?: { csv?: string } }).preview?.csv ?? "")
+        : "";
+
+      if (!csv.trim()) {
+        throw new Error("CSV önizlemesi alınamadı.");
+      }
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `finance-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      setState({
+        status: "saved",
+        message: "CSV export hazırlandı.",
+      });
+      return true;
+    } catch (error) {
+      setState({
+        status: "error",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "CSV export hazırlanamadı.",
+      });
+      return false;
+    }
+  }
+
+  function printFinanceTable() {
+    window.print();
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -585,7 +833,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
             type="button"
             onClick={openPreview}
           >
-            AyrÄ± sekmede aÃ§
+            Ayrı sekmede aç
           </button>
         </div>
         <div className={`mt-4 overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 ${previewWidthClass()} mx-auto`}>
@@ -847,8 +1095,8 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
 
       <SectionCard
         className={show("media") ? "" : "hidden"}
-        title="FotoÄŸraf YÃ¶netimi"
-        description="Upload entegrasyonu ÅŸimdilik gÃ¼venli placeholder olarak kalÄ±r. URL ve alt metin girerek medya alanlarÄ±nÄ± yÃ¶net."
+        title="Fotoğraf Yönetimi"
+        description="Upload entegrasyonu şimdilik güvenli placeholder olarak kalır. URL ve alt metin girerek medya alanlarını yönet."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {MEDIA_SLOT_FIELDS.map((slot) => (
@@ -860,7 +1108,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               label={slot.label}
               description={slot.description}
               items={panel.mediaAssets}
-              onSave={sendPayload}
+              onUpload={uploadMediaAsset}
               pending={isPending}
             />
           ))}
@@ -871,8 +1119,8 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
 
       <SectionCard
         className={show("customers") ? "" : "hidden"}
-        title="MÃ¼ÅŸteriler / CRM"
-        description="Rezervasyonlardan otomatik mÃ¼ÅŸteri kartÄ± oluÅŸur. AynÄ± telefon veya email mevcut mÃ¼ÅŸteriyle eÅŸleÅŸir."
+        title="Müşteriler / CRM"
+        description="Rezervasyonlardan otomatik müşteri kartı oluşur. Aynı telefon veya email mevcut müşteriyle eşleşir."
       >
         <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <form
@@ -894,7 +1142,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   notes: String(body.notes ?? ""),
                   source: "manual",
                 },
-                "MÃ¼ÅŸteri oluÅŸturuldu.",
+                "Müşteri oluşturuldu.",
               );
 
               if (ok) {
@@ -909,16 +1157,16 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               <Field name="fullName" label="Ad soyad" />
               <Field name="phone" label="Telefon" />
               <Field name="email" label="Email" type="email" />
-              <Field name="country" label="Ãœlke" />
+              <Field name="country" label="Ülke" />
               <Field name="language" label="Dil" />
             </div>
-            <TextArea name="notes" label="Not" placeholder="MÃ¼ÅŸteri notu" />
+            <TextArea name="notes" label="Not" placeholder="Müşteri notu" />
             <button
               className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
               disabled={isPending}
               type="submit"
             >
-              MÃ¼ÅŸteri oluÅŸtur
+              Müşteri oluştur
             </button>
           </form>
 
@@ -949,7 +1197,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   </div>
 
                   <div className="grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-sm font-semibold text-slate-900">Rezervasyon geÃ§miÅŸi</div>
+                    <div className="text-sm font-semibold text-slate-900">Rezervasyon geçmişi</div>
                     {customer.history.length ? (
                       <div className="grid gap-2 text-sm text-slate-600">
                         {customer.history.map((item) => (
@@ -960,7 +1208,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-500">HenÃ¼z rezervasyon yok.</p>
+                      <p className="text-sm text-slate-500">Henüz rezervasyon yok.</p>
                     )}
                   </div>
 
@@ -982,7 +1230,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                           language: String(body.language ?? customer.language ?? ""),
                           notes: String(body.notes ?? customer.notes ?? ""),
                         },
-                        "MÃ¼ÅŸteri gÃ¼ncellendi.",
+                        "Müşteri güncellendi.",
                       );
                     }}
                   >
@@ -990,7 +1238,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                       <Field name="fullName" label="Ad soyad" defaultValue={customer.fullName} />
                       <Field name="phone" label="Telefon" defaultValue={customer.phone ?? ""} />
                       <Field name="email" label="Email" defaultValue={customer.email ?? ""} type="email" />
-                      <Field name="country" label="Ãœlke" defaultValue={customer.country ?? ""} />
+                      <Field name="country" label="Ülke" defaultValue={customer.country ?? ""} />
                       <Field name="language" label="Dil" defaultValue={customer.language ?? ""} />
                     </div>
                     <TextArea name="notes" label="Not" defaultValue={customer.notes} />
@@ -1005,7 +1253,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               ))
             ) : (
               <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                HenÃ¼z mÃ¼ÅŸteri kaydÄ± yok.
+                Henüz müşteri kaydı yok.
               </div>
             )}
           </div>
@@ -1015,36 +1263,246 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
       <SectionCard
         className={show("finance") ? "" : "hidden"}
         title="Finans"
-        description="Rezervasyon bazli ciro, kapora ve tahsilat durumlari businessId icinde izlenir."
+        description="Rezervasyonlar tek tabloda izlenir, tahsilat ve ödeme durumu businessId içinde takip edilir."
       >
         <div className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <SummaryTile label="Toplam ciro" value={String(financeSummary.totalTurnover)} />
-            <SummaryTile label="Alinan kapora" value={String(financeSummary.depositCollected)} />
+          <div className="flex flex-wrap items-start justify-between gap-3 no-print">
+            <div className="grid gap-1">
+              <div className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                Finans
+              </div>
+              <h3 className="text-lg font-semibold tracking-tight text-slate-950">
+                Tahsilat tablosu
+              </h3>
+              <p className="text-sm text-slate-600">
+                Tarih boş bırakılırsa tüm kayıtlar görünür.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                type="button"
+                onClick={() => void exportFinanceCsv()}
+              >
+                CSV Export
+              </button>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+                type="button"
+                onClick={printFinanceTable}
+              >
+                PDF Yazdır
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <SummaryTile
-              label="Kalan tahsilat"
-              value={String(financeSummary.remainingCollection)}
+              label="Toplam ciro"
+              value={formatFinanceSummaryValue(financeSummary.totalTurnover, financeSummaryCurrency)}
             />
             <SummaryTile
-              label="Aracta tahsil"
-              value={String(financeSummary.collectedInVehicle)}
+              label="Alınan kapora"
+              value={formatFinanceSummaryValue(financeSummary.depositCollected, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="Kalan tahsilat"
+              value={formatFinanceSummaryValue(financeSummary.remainingCollection, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="Araçta tahsil"
+              value={formatFinanceSummaryValue(financeSummary.collectedInVehicle, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="Ödenen"
+              value={formatFinanceSummaryValue(financeSummary.paidTotal, financeSummaryCurrency)}
+            />
+            <SummaryTile
+              label="İade / İptal"
+              value={formatFinanceSummaryValue(financeSummary.refundTotal, financeSummaryCurrency)}
             />
           </div>
 
-          <div className="grid gap-3">
-            {operations.length ? (
-              operations.map((request) => (
-                <FinanceCard
-                  key={`finance-${request.id}`}
-                  request={request}
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 no-print">
+            <div className="grid gap-3 xl:grid-cols-5">
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Tarih</span>
+                <input
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                  type="date"
+                  value={financeDateFilter}
+                  onChange={(event) => setFinanceDateFilter(event.target.value)}
                 />
-              ))
-            ) : (
-              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                Finans kaydi yok.
-              </div>
-            )}
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Ödeme durumu</span>
+                <select
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                  value={financePaymentFilter}
+                  onChange={(event) => setFinancePaymentFilter(event.target.value)}
+                >
+                  <option value="all">Tümü</option>
+                  {PAYMENT_STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Para birimi</span>
+                <select
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                  value={financeCurrencyFilter}
+                  onChange={(event) => setFinanceCurrencyFilter(event.target.value)}
+                >
+                  <option value="all">Tümü</option>
+                  {financeFilterOptions.currencies.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Kaynak</span>
+                <select
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                  value={financeSourceFilter}
+                  onChange={(event) => setFinanceSourceFilter(event.target.value)}
+                >
+                  <option value="all">Tümü</option>
+                  {financeFilterOptions.sources.map((source) => (
+                    <option key={source} value={source}>
+                      {source}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Müşteri arama</span>
+                <input
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                  placeholder="Müşteri, telefon, rota, uçuş kodu"
+                  value={financeQuery}
+                  onChange={(event) => setFinanceQuery(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                type="button"
+                onClick={() => setFinanceDateFilter("")}
+              >
+                Tarihi temizle
+              </button>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                type="button"
+                onClick={() => {
+                  setFinanceDateFilter("");
+                  setFinancePaymentFilter("all");
+                  setFinanceCurrencyFilter("all");
+                  setFinanceSourceFilter("all");
+                  setFinanceQuery("");
+                }}
+              >
+                Filtreleri temizle
+              </button>
+            </div>
           </div>
+
+          <div
+            className="overflow-x-auto rounded-[28px] border border-slate-200 bg-white shadow-sm"
+            id="finance-print-area"
+          >
+            <table className="min-w-[1800px] border-collapse text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                <tr>
+                  <Th>Tarih</Th>
+                  <Th>Saat</Th>
+                  <Th>Müşteri</Th>
+                  <Th>Nereden → Nereye</Th>
+                  <Th>Toplam</Th>
+                  <Th>Kapora</Th>
+                  <Th>Kalan</Th>
+                  <Th>Para birimi</Th>
+                  <Th>Ödeme durumu</Th>
+                  <Th>Kaynak / Acente</Th>
+                  <Th>Tedarikçi PASS</Th>
+                  <Th>Acente PASS</Th>
+                  <Th>Kâr</Th>
+                  <Th>Not</Th>
+                  <Th className="no-print">Aksiyonlar</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {financeRows.length ? (
+                  financeRows.map((request) => (
+                    <FinanceTableRow
+                      key={`finance-${request.id}-${request.totalAmount ?? ""}-${request.depositAmount ?? ""}-${request.remainingAmount ?? ""}-${request.paymentStatus}-${request.notes ?? ""}`}
+                      request={request}
+                      onSave={updateReservationQuick}
+                      onOpenVoucher={() => router.push(`/app/reservations/${request.id}/voucher`)}
+                    />
+                  ))
+                ) : (
+                  <tr>
+                    <td className="border-t border-slate-200 px-4 py-6 text-sm text-slate-500" colSpan={15}>
+                      Finans kaydı yok.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <style jsx global>{`
+            @page {
+              size: A4 landscape;
+              margin: 12mm;
+            }
+
+            .finance-readonly-value {
+              display: none;
+            }
+
+            @media print {
+              .finance-editable-input {
+                display: none !important;
+              }
+
+              .finance-readonly-value {
+                display: block !important;
+              }
+
+              body * {
+                visibility: hidden !important;
+              }
+
+              #finance-print-area,
+              #finance-print-area * {
+                visibility: visible !important;
+              }
+
+              #finance-print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+              }
+
+              .no-print {
+                display: none !important;
+              }
+            }
+          `}</style>
         </div>
       </SectionCard>
 
@@ -1215,8 +1673,8 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
 
       <SectionCard
         className={show("languages") ? "" : "hidden"}
-        title="Dil yÃ¶netimi"
-        description="Temel dil kaydi olustur ve mevcut kaydi guncelle."
+        title="Dil yönetimi"
+        description="Temel dil kaydı oluştur ve mevcut kaydı güncelle."
       >
         <EditableListCard
           description="Dil kayitlari."
@@ -1523,7 +1981,7 @@ function MediaSlotCard({
       >
         <input type="hidden" name="sortOrder" value="0" />
         <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">GÃ¶rsel URL</span>
+          <span className="text-sm font-medium text-slate-700">Görsel URL</span>
           <input
             className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
             defaultValue={sourceUrl}
@@ -1569,19 +2027,20 @@ function MediaSlotCardV2({
   label,
   description,
   items,
-  onSave,
+  onUpload,
   pending,
 }: {
   kind: MediaSlotKey;
   label: string;
   description: string;
   items: BusinessPanelData["mediaAssets"];
-  onSave: (
-    payload: Record<string, string | boolean | number | undefined>,
+  onUpload: (
+    formData: FormData,
     successMessage: string,
   ) => Promise<boolean>;
   pending: boolean;
 }) {
+  const router = useRouter();
   const asset = items.find((entry) => entry.kind === kind) ?? null;
   const metadata = asset?.metadata ?? null;
   const sourceUrl = asset?.sourceUrl?.trim() ?? "";
@@ -1594,16 +2053,20 @@ function MediaSlotCardV2({
   const [zoom, setZoom] = useState(String(metadata?.zoom ?? 1));
   const [cover, setCover] = useState(Boolean(metadata?.cover ?? true));
   const [fileName, setFileName] = useState(metadata?.fileName?.trim() || "");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function handleDelete() {
-    await onSave(
-      {
-        section: "media",
-        action: "delete",
-        kind,
-      },
-      "Medya silindi.",
-    );
+    const formData = new FormData();
+    formData.set("section", "media");
+    formData.set("action", "delete");
+    formData.set("kind", kind);
+
+    const ok = await onUpload(formData, "Medya silindi.");
+
+    if (ok) {
+      router.refresh();
+    }
   }
 
   return (
@@ -1637,31 +2100,34 @@ function MediaSlotCardV2({
         className="grid gap-3"
         onSubmit={async (event) => {
           event.preventDefault();
-          const formData = new FormData(event.currentTarget);
-          const body = Object.fromEntries(formData.entries());
-          await onSave(
-            {
-              section: "media",
-              action: "update",
-              kind,
-              sourceUrl: draftSrc || String(body.sourceUrl ?? ""),
-              previewDataUrl: draftSrc || String(body.sourceUrl ?? ""),
-              fileName,
-              altText: draftAlt,
-              cropX: Number(cropX ?? 50),
-              cropY: Number(cropY ?? 50),
-              zoom: Number(zoom ?? 1),
-              slot: kind,
-              cover,
-              sortOrder: Number(body.sortOrder ?? 0),
-            },
-            "Medya kaydedildi.",
-          );
+          setSaving(true);
+          try {
+            const formData = new FormData();
+            formData.set("section", "media");
+            formData.set("action", "update");
+            formData.set("kind", kind);
+            formData.set("previewDataUrl", draftSrc);
+            formData.set("fileName", fileName || selectedFile?.name || "");
+            formData.set("altText", draftAlt);
+            formData.set("cropX", cropX);
+            formData.set("cropY", cropY);
+            formData.set("zoom", zoom);
+            formData.set("slot", kind);
+            formData.set("cover", String(cover));
+            formData.set("sortOrder", "0");
+            if (selectedFile) {
+              formData.set("file", selectedFile);
+            }
+
+            await onUpload(formData, "Medya kaydedildi.");
+          } finally {
+            setSaving(false);
+          }
         }}
       >
         <input type="hidden" name="sortOrder" value="0" />
         <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Dosya sec</span>
+          <span className="text-sm font-medium text-slate-700">Dosya seç</span>
           <input
             accept="image/*"
             className="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm outline-none transition file:mr-4 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-slate-400"
@@ -1669,9 +2135,11 @@ function MediaSlotCardV2({
             onChange={async (event) => {
               const file = event.currentTarget.files?.[0] ?? null;
               if (!file) {
+                setSelectedFile(null);
                 return;
               }
 
+              setSelectedFile(file);
               setFileName(file.name);
               const reader = new FileReader();
               reader.onload = () => {
@@ -1702,14 +2170,14 @@ function MediaSlotCardV2({
         <div className="flex flex-wrap gap-2">
           <button
             className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={pending}
+            disabled={pending || saving}
             type="submit"
           >
             Kaydet
           </button>
           <button
             className="inline-flex h-10 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={pending}
+            disabled={pending || saving}
             type="button"
             onClick={() => {
               void handleDelete();
@@ -1821,37 +2289,174 @@ function OperationCard({
   );
 }
 
-function FinanceCard({
+function FinanceTableRow({
   request,
+  onSave,
+  onOpenVoucher,
 }: {
   request: OperationView;
+  onSave: (
+    reservationId: string,
+    payload: Record<string, unknown>,
+    successMessage: string,
+  ) => Promise<boolean>;
+  onOpenVoucher: () => void;
 }) {
+  const [draft, setDraft] = useState<{
+    totalAmount: string;
+    depositAmount: string;
+    remainingAmount: string;
+    paymentStatus: string;
+    notes: string;
+  }>({
+    totalAmount: String(request.totalAmount ?? ""),
+    depositAmount: String(request.depositAmount ?? ""),
+    remainingAmount: String(request.remainingAmount ?? ""),
+    paymentStatus: formatPaymentStatusLabel(request.paymentStatus),
+    notes: String(request.notes ?? ""),
+  });
+  const [saving, setSaving] = useState(false);
+  const routeLabel = [request.origin, request.destination].filter(Boolean).join(" → ") || "-";
+  const profit = Math.max(
+    toMoney(request.totalAmount) - toMoney(request.depositAmount) - toMoney(request.remainingAmount),
+    0,
+  );
+
+  async function saveRow() {
+    setSaving(true);
+
+    try {
+      await onSave(
+        request.id,
+        {
+          totalAmount: draft.totalAmount,
+          depositAmount: draft.depositAmount,
+          remainingAmount: draft.remainingAmount,
+          paymentStatus: draft.paymentStatus,
+          notes: draft.notes,
+        },
+        "Tahsilat güncellendi.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <tr className="border-t border-slate-200 hover:bg-slate-50/60">
+      <Td>{request.travelDate ?? "-"}</Td>
+      <Td>{request.travelTime ?? "-"}</Td>
+      <Td>
         <div className="grid gap-1">
           <div className="font-semibold text-slate-950">{request.customerName}</div>
-          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
-            {request.travelDate ?? "-"} {request.travelTime ?? ""}
-          </div>
+          <div className="text-xs text-slate-500">{request.phone ?? "-"}</div>
         </div>
-        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-          {request.currency ?? "TRY"}
+      </Td>
+      <Td>
+        <div className="grid gap-1">
+          <div className="font-medium text-slate-900">{routeLabel}</div>
+          <div className="text-xs text-slate-500">{request.flightCode ?? "-"}</div>
         </div>
-      </div>
-
-      <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-        <div>Toplam: {request.totalAmount ?? 0}</div>
-        <div>Kapora: {request.depositAmount ?? 0}</div>
-        <div>Kalan: {request.remainingAmount ?? 0}</div>
-        <div>Durum: {formatPaymentStatusLabel(request.paymentStatus)}</div>
-      </div>
-
-      <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        Finans guncelleme alanlari yeni rezervasyon modulune tasindi.
-      </div>
-    </article>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.totalAmount}
+            onChange={(event) => setDraft((current) => ({ ...current, totalAmount: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{financeCellText(request.totalAmount, request.currency)}</div>
+        </div>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.depositAmount}
+            onChange={(event) => setDraft((current) => ({ ...current, depositAmount: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{financeCellText(request.depositAmount, request.currency)}</div>
+        </div>
+      </Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.remainingAmount}
+            onChange={(event) => setDraft((current) => ({ ...current, remainingAmount: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{financeCellText(request.remainingAmount, request.currency)}</div>
+        </div>
+      </Td>
+      <Td>{request.currency ?? "-"}</Td>
+      <Td>
+        <div className="grid gap-2">
+          <select
+            className="finance-editable-input h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            value={draft.paymentStatus}
+            onChange={(event) => setDraft((current) => ({ ...current, paymentStatus: event.target.value }))}
+          >
+            {PAYMENT_STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <div className="text-xs text-slate-500 finance-readonly-value">{formatPaymentStatusLabel(request.paymentStatus)}</div>
+        </div>
+      </Td>
+      <Td>{request.source ?? "-"}</Td>
+      <Td>-</Td>
+      <Td>-</Td>
+      <Td>{formatMoneyValue(profit, request.currency)}</Td>
+      <Td>
+        <div className="grid gap-2">
+          <input
+            className="finance-editable-input h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400"
+            value={draft.notes}
+            onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+          />
+          <div className="text-xs text-slate-500 finance-readonly-value">{request.notes ?? "-"}</div>
+        </div>
+      </Td>
+      <Td className="no-print">
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="inline-flex h-9 items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            type="button"
+            onClick={onOpenVoucher}
+          >
+            Voucher aç
+          </button>
+          <button
+            className="inline-flex h-9 items-center justify-center rounded-2xl bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={saving}
+            type="button"
+            onClick={() => {
+              void saveRow();
+            }}
+          >
+            Kaydet
+          </button>
+        </div>
+      </Td>
+    </tr>
   );
+}
+
+function Th({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <th className={`border-t border-slate-200 px-4 py-3 ${className}`.trim()} scope="col">
+      {children}
+    </th>
+  );
+}
+
+function Td({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <td className={`border-t border-slate-200 px-4 py-4 align-top ${className}`.trim()}>{children}</td>;
 }
 
 function SummaryTile({

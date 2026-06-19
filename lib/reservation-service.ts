@@ -512,6 +512,18 @@ export async function updateReservation(
     patchPayload.notes = normalizeOptionalText(input.notes);
   }
 
+  if (input.totalAmount !== undefined) {
+    patchPayload.total_amount = normalizeAmount(input.totalAmount);
+  }
+
+  if (input.depositAmount !== undefined) {
+    patchPayload.deposit_amount = normalizeAmount(input.depositAmount);
+  }
+
+  if (input.remainingAmount !== undefined) {
+    patchPayload.remaining_amount = normalizeAmount(input.remainingAmount);
+  }
+
   if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
       `/requests?id=eq.${encodeURIComponent(recordId)}&business_id=eq.${encodeURIComponent(
@@ -579,6 +591,12 @@ export async function updateReservation(
     paymentStatus:
       (patchPayload.payment_status as string | undefined) ?? existing.paymentStatus,
     notes: (patchPayload.notes as string | null | undefined) ?? existing.notes,
+    totalAmount:
+      (patchPayload.total_amount as number | null | undefined) ?? existing.totalAmount,
+    depositAmount:
+      (patchPayload.deposit_amount as number | null | undefined) ?? existing.depositAmount,
+    remainingAmount:
+      (patchPayload.remaining_amount as number | null | undefined) ?? existing.remainingAmount,
   };
 
   demoReservations.set(

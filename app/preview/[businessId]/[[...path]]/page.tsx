@@ -217,7 +217,7 @@ function PreviewHome({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <section className="grid gap-8">
         <div className="grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">
           <div className="grid content-start gap-4">
@@ -334,7 +334,7 @@ function PreviewServices({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection
         eyebrow="Hizmetler"
         title="Business hizmet listesi"
@@ -386,7 +386,7 @@ function PreviewServiceDetail({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection eyebrow="Hizmet detay" title={service.title} description={service.description}>
         <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <MediaFrame
@@ -421,7 +421,7 @@ function PreviewVehicles({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection
         eyebrow="Araclar"
         title="Business arac listesi"
@@ -473,7 +473,7 @@ function PreviewVehicleDetail({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection eyebrow="Arac detay" title={vehicle.title} description={vehicle.description}>
         <div className="grid gap-4 lg:grid-cols-2">
           <MediaFrame
@@ -544,7 +544,7 @@ function PreviewRoutes({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection
         eyebrow="Rotalar"
         title="Business rota listesi"
@@ -596,7 +596,7 @@ function PreviewRouteDetail({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection eyebrow="Rota detay" title={route.title} description={route.description}>
         <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <MediaFrame
@@ -631,7 +631,7 @@ function PreviewBlog({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection
         eyebrow="Blog"
         title="Business yazilari"
@@ -683,7 +683,7 @@ function PreviewBlogDetail({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection
         eyebrow="Blog detay"
         title={post.title}
@@ -722,7 +722,7 @@ function PreviewContact({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <PanelSection
           eyebrow="Iletisim"
@@ -771,7 +771,7 @@ function PreviewQuote({
   }
 
   return (
-    <PublicSiteShell business={business} basePath={basePath}>
+    <PublicSiteShell business={business} basePath={basePath} trackAnalytics={false}>
       <PanelSection
         eyebrow="Teklif al"
         title="Basit teklif talebi"

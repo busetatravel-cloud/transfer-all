@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { updateBusinessDomainRecord } from "@/lib/business";
+import { DOMAIN_STATUS_OPTIONS } from "@/lib/domain-utils";
 
 function normalizeStatus(value: unknown) {
-  if (value === "pending" || value === "verified" || value === "active") {
-    return value;
-  }
-
-  return null;
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return DOMAIN_STATUS_OPTIONS.includes(normalized as (typeof DOMAIN_STATUS_OPTIONS)[number])
+    ? normalized
+    : null;
 }
 
 export async function PATCH(
@@ -22,29 +22,41 @@ export async function PATCH(
 
   const { id } = await params;
   const body = (await request.json().catch(() => null)) as
-    | { domain?: string; domainStatus?: string }
+    | {
+        domain?: string;
+        hostname?: string;
+        domainStatus?: string;
+      }
     | null;
 
-  const domain = body?.domain?.trim() ?? "";
+  const domain = typeof body?.domain === "string" ? body.domain.trim() : "";
+  const hostname = typeof body?.hostname === "string" ? body.hostname.trim() : "";
   const domainStatus = normalizeStatus(body?.domainStatus);
 
   if (body?.domainStatus && !domainStatus) {
     return NextResponse.json(
-      { error: "Gecersiz domain durumu." },
+      { error: "Geçersiz domain durumu." },
       { status: 400 },
     );
   }
 
   try {
     const business = await updateBusinessDomainRecord(id, {
-      domain,
-      domainStatus: domainStatus ?? "pending",
+      domain: domain || hostname,
+      hostname: hostname || domain,
+      domainStatus: (domainStatus as
+        | "pending"
+        | "dns_detected"
+        | "verified"
+        | "active"
+        | "failed"
+        | undefined) ?? "pending",
     });
 
     return NextResponse.json({ ok: true, business });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Domain guncellenemedi.";
+      error instanceof Error ? error.message : "Domain güncellenemedi.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

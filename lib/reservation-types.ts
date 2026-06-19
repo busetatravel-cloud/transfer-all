@@ -80,4 +80,7 @@ export type ReservationUpdateInput = Partial<ReservationCreateInput> & {
   driverName?: string;
   pickupStatus?: string;
   operationNotes?: string;
+  totalAmount?: number | string;
+  depositAmount?: number | string;
+  remainingAmount?: number | string;
 };

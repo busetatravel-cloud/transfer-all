@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { sendVoucherMail } from "@/lib/mail";
+import { sendVoucherWhatsApp } from "@/lib/whatsapp";
 import { getReservationById } from "@/lib/reservation-service";
-import { ensureBusinessVoucherForReservation } from "@/lib/vouchers";
+import {
+  buildVoucherLinkPlaceholder,
+  buildVoucherMailTemplate,
+} from "@/lib/voucher-mail";
+import { buildVoucherWhatsAppTemplate } from "@/lib/voucher-whatsapp";
+import {
+  ensureBusinessVoucherForReservation,
+  getBusinessVoucherByRequestId,
+} from "@/lib/vouchers";
 import { createVoucherDeliveryLog } from "@/lib/voucher-delivery";
 
 function normalizeText(value: unknown) {
@@ -21,6 +31,7 @@ function buildErrorResponse(
   status: number,
   code: string,
   message: string,
+  extra?: Record<string, unknown>,
   error?: unknown,
 ) {
   return NextResponse.json(
@@ -28,10 +39,41 @@ function buildErrorResponse(
       ok: false,
       code,
       message,
+      ...(extra ?? {}),
       stack: error instanceof Error ? error.stack : undefined,
     },
     { status },
   );
+}
+
+async function buildReservationContext(businessId: string, reservationId: string) {
+  const reservation = await getReservationById(businessId, reservationId);
+
+  if (!reservation) {
+    return null;
+  }
+
+  const voucher =
+    (await getBusinessVoucherByRequestId(businessId, reservationId)) ??
+    (await ensureBusinessVoucherForReservation(businessId, reservationId));
+
+  if (!voucher) {
+    return null;
+  }
+
+  return { reservation, voucher };
+}
+
+async function writeDeliveryLog(args: {
+  businessId: string;
+  reservationId: string;
+  voucherId: string;
+  channel: "mail" | "whatsapp";
+  recipient: string;
+  status: "draft" | "copied" | "sent_placeholder" | "sent" | "failed";
+  messagePreview: string;
+}) {
+  return createVoucherDeliveryLog(args);
 }
 
 export async function POST(request: Request) {
@@ -46,6 +88,7 @@ export async function POST(request: Request) {
     unknown
   > | null;
 
+  const action = normalizeText(parseBodyField(body, "action")) || "create";
   const reservationId = normalizeText(parseBodyField(body, "reservationId"));
   const voucherId = normalizeText(parseBodyField(body, "voucherId"));
   const channel = normalizeText(parseBodyField(body, "channel")) as
@@ -55,34 +98,183 @@ export async function POST(request: Request) {
   const messagePreview = normalizeText(parseBodyField(body, "messagePreview"));
   const status = normalizeText(parseBodyField(body, "status")) || "draft";
 
-  if (!reservationId || !voucherId || !channel || !recipient || !messagePreview) {
+  if (!reservationId || !voucherId || !channel) {
     return buildErrorResponse(400, "validation_error", "Zorunlu alanlar eksik.");
   }
 
-  const reservation = await getReservationById(auth.session.businessId, reservationId);
-
-  if (!reservation) {
-    return buildErrorResponse(404, "not_found", "Rezervasyon bulunamadı.");
-  }
-
-  const voucher = await ensureBusinessVoucherForReservation(
+  const context = await buildReservationContext(
     auth.session.businessId,
     reservationId,
   );
 
-  if (!voucher || voucher.id !== voucherId) {
+  if (!context || context.voucher.id !== voucherId) {
     return buildErrorResponse(404, "not_found", "Voucher bulunamadı.");
   }
 
+  const mailTemplate = buildVoucherMailTemplate(context.reservation, context.voucher, {
+    voucherLink: buildVoucherLinkPlaceholder(context.voucher.id),
+    businessName: context.voucher.businessName,
+  });
+  const whatsappTemplate = buildVoucherWhatsAppTemplate(
+    context.reservation,
+    context.voucher,
+    {
+      voucherLink: buildVoucherLinkPlaceholder(context.voucher.id),
+      businessName: context.voucher.businessName,
+    },
+  );
+
+  if (action === "send" && channel === "mail") {
+    const recipientEmail = recipient || mailTemplate.recipient;
+
+    if (!recipientEmail) {
+      const log = await writeDeliveryLog({
+        businessId: auth.session.businessId,
+        reservationId,
+        voucherId,
+        channel,
+        recipient: "",
+        status: "failed",
+        messagePreview: messagePreview || mailTemplate.preview,
+      });
+
+      return NextResponse.json({
+        ok: false,
+        code: "validation_error",
+        message: "Mail alıcı adresi gerekli.",
+        log,
+      });
+    }
+
+    try {
+      const result = await sendVoucherMail({
+        to: recipientEmail,
+        subject: mailTemplate.subject,
+        text: mailTemplate.preview,
+      });
+
+      const log = await writeDeliveryLog({
+        businessId: auth.session.businessId,
+        reservationId,
+        voucherId,
+        channel,
+        recipient: recipientEmail,
+        status: result.status,
+        messagePreview: mailTemplate.preview,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        provider: result.provider,
+        status: result.status,
+        log,
+      });
+    } catch (error) {
+      const log = await writeDeliveryLog({
+        businessId: auth.session.businessId,
+        reservationId,
+        voucherId,
+        channel,
+        recipient: recipientEmail,
+        status: "failed",
+        messagePreview: mailTemplate.preview,
+      });
+
+      return buildErrorResponse(
+        500,
+        "send_failed",
+        error instanceof Error ? error.message : "Mail gönderilemedi.",
+        { log },
+        error,
+      );
+    }
+  }
+
+  if (action === "send" && channel === "whatsapp") {
+    const recipientPhone = recipient || whatsappTemplate.recipient;
+
+    if (!recipientPhone) {
+      const log = await writeDeliveryLog({
+        businessId: auth.session.businessId,
+        reservationId,
+        voucherId,
+        channel,
+        recipient: "",
+        status: "failed",
+        messagePreview: messagePreview || whatsappTemplate.preview,
+      });
+
+      return NextResponse.json({
+        ok: false,
+        code: "validation_error",
+        message: "WhatsApp alıcı telefonu gerekli.",
+        log,
+      });
+    }
+
+    try {
+      const result = await sendVoucherWhatsApp({
+        to: recipientPhone,
+        body: whatsappTemplate.preview,
+      });
+
+      const log = await writeDeliveryLog({
+        businessId: auth.session.businessId,
+        reservationId,
+        voucherId,
+        channel,
+        recipient: recipientPhone,
+        status: result.status,
+        messagePreview: whatsappTemplate.preview,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        provider: result.provider,
+        status: result.status,
+        log,
+      });
+    } catch (error) {
+      const log = await writeDeliveryLog({
+        businessId: auth.session.businessId,
+        reservationId,
+        voucherId,
+        channel,
+        recipient: recipientPhone,
+        status: "failed",
+        messagePreview: whatsappTemplate.preview,
+      });
+
+      return buildErrorResponse(
+        500,
+        "send_failed",
+        error instanceof Error ? error.message : "WhatsApp gönderilemedi.",
+        { log },
+        error,
+      );
+    }
+  }
+
   try {
-    const log = await createVoucherDeliveryLog({
+    const preview =
+      channel === "whatsapp"
+        ? messagePreview || whatsappTemplate.preview
+        : messagePreview || mailTemplate.preview;
+
+    const log = await writeDeliveryLog({
       businessId: auth.session.businessId,
       reservationId,
       voucherId,
       channel,
       recipient,
-      status: status as "draft" | "copied" | "sent_placeholder" | "failed",
-      messagePreview,
+      status:
+        status === "copied" ||
+        status === "sent" ||
+        status === "sent_placeholder" ||
+        status === "failed"
+          ? status
+          : "draft",
+      messagePreview: preview,
     });
 
     return NextResponse.json({
@@ -94,6 +286,7 @@ export async function POST(request: Request) {
       500,
       "log_failed",
       error instanceof Error ? error.message : "Voucher log kaydedilemedi.",
+      undefined,
       error,
     );
   }

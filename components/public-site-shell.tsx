@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import type { BusinessRecord } from "@/lib/business";
 import { MEDIA_PLACEHOLDER_SRC } from "@/lib/media";
 import { joinPublicPath } from "@/lib/public-path";
+import { PublicAnalyticsTracker } from "@/components/public-analytics-tracker";
 
 const navItems = [
   { href: "/", label: "Ana sayfa" },
@@ -20,15 +21,20 @@ export function PublicSiteShell({
   business,
   children,
   basePath = "",
+  trackAnalytics = true,
 }: {
   business: BusinessRecord;
   children: ReactNode;
   basePath?: string;
+  trackAnalytics?: boolean;
 }) {
   const buildHref = (href: string) => joinPublicPath(basePath, href);
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_40%,#f1f5f9_100%)] text-slate-950">
+      {trackAnalytics ? (
+        <PublicAnalyticsTracker businessId={business.id} enabled />
+      ) : null}
       <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <Link href={buildHref("/")} className="text-lg font-semibold tracking-tight">

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
+import { getSupabaseConfig, getSupabaseUrl, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessMediaSlot =
   | "logo"
@@ -70,10 +70,96 @@ export const BUSINESS_MEDIA_SLOTS: Array<{
 export const MEDIA_PLACEHOLDER_SRC =
   "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800' viewBox='0 0 1200 800'%3E%3Crect width='1200' height='800' fill='%23e2e8f0'/%3E%3Cpath d='M200 560l180-180 150 150 120-120 250 250H200z' fill='%2394a3b8'/%3E%3Ccircle cx='430' cy='300' r='70' fill='%23cbd5e1'/%3E%3C/svg%3E";
 
+export const BUSINESS_MEDIA_BUCKET = "business-media";
+
 const demoMedia = new Map<string, BusinessMediaAssetRecord[]>();
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeStorageSegment(value: string) {
+  return value
+    .trim()
+    .replace(/[\\\/]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+}
+
+export function buildBusinessMediaStoragePath(
+  businessId: string,
+  slot: BusinessMediaSlot | string,
+  fileName: string,
+) {
+  const safeBusinessId = normalizeStorageSegment(businessId) || "business";
+  const safeSlot = normalizeStorageSegment(slot) || "media";
+  const rawFileName = String(fileName ?? "").trim() || "upload";
+  const parts = rawFileName.split(".");
+  const extension = parts.length > 1 ? parts.pop() ?? "" : "";
+  const baseName = normalizeStorageSegment(parts.join(".")) || "file";
+  const safeFileName = extension
+    ? `${baseName}.${normalizeStorageSegment(extension) || "bin"}`
+    : baseName;
+
+  return `${safeBusinessId}/${safeSlot}/${safeFileName}`;
+}
+
+export function buildBusinessMediaPublicUrl(storagePath: string) {
+  const baseUrl = getSupabaseUrl();
+
+  if (!baseUrl) {
+    return "";
+  }
+
+  const encodedPath = storagePath
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  return `${baseUrl}/storage/v1/object/public/${BUSINESS_MEDIA_BUCKET}/${encodedPath}`;
+}
+
+async function uploadBusinessMediaObject(
+  storagePath: string,
+  file: File,
+) {
+  const config = getSupabaseConfig();
+
+  if (!config) {
+    return null;
+  }
+
+  const response = await fetch(
+    `${config.url}/storage/v1/object/${BUSINESS_MEDIA_BUCKET}/${storagePath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: config.serviceKey,
+        Authorization: `Bearer ${config.serviceKey}`,
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "true",
+      },
+      body: new Uint8Array(await file.arrayBuffer()),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message.trim() || "Medya yuklenemedi.");
+  }
+
+  return {
+    storagePath,
+    sourceUrl: buildBusinessMediaPublicUrl(storagePath),
+  };
 }
 
 async function supabaseFetch(path: string, init?: RequestInit) {
@@ -159,6 +245,16 @@ export function resolveBusinessMediaAltText(
 ) {
   const asset = pickLatestMediaAsset(assets, kind);
   return asset?.metadata?.altText?.trim() || asset?.altText?.trim() || fallback;
+}
+
+export async function uploadBusinessMediaFile(
+  businessId: string,
+  slot: BusinessMediaSlot | string,
+  file: File,
+) {
+  const storagePath = buildBusinessMediaStoragePath(businessId, slot, file.name);
+  const uploaded = await uploadBusinessMediaObject(storagePath, file);
+  return uploaded;
 }
 
 export function buildMediaPlaceholderAsset(

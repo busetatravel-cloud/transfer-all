@@ -8,17 +8,22 @@ export const superAdminNav: PanelNavItem[] = [
   {
     href: "/super-admin",
     label: "Dashboard",
-    description: "Sistem ozeti ve hizli durum",
+    description: "Sistem özeti ve hızlı durum",
   },
   {
     href: "/super-admin/plans",
     label: "Paketler",
-    description: "Plan tanimlari ve abonelik baglama",
+    description: "Plan tanımları ve abonelik bağlama",
   },
   {
     href: "/super-admin/system-status",
     label: "Sistem Durumu",
-    description: "Saglik kartlari ve placeholder kontroller",
+    description: "Sağlık kartları ve placeholder kontroller",
+  },
+  {
+    href: "/super-admin/domains",
+    label: "Domainlar",
+    description: "Tüm bağlı domainler ve aktivasyon kontrolü",
   },
   {
     href: "/super-admin#businesses",
@@ -28,7 +33,7 @@ export const superAdminNav: PanelNavItem[] = [
   {
     href: "/super-admin#settings",
     label: "Settings",
-    description: "Paket, domain ve AI plani",
+    description: "Paket, domain ve AI planı",
   },
 ];
 
@@ -36,7 +41,7 @@ export const businessAdminNav: PanelNavItem[] = [
   {
     href: "/app/dashboard",
     label: "Dashboard",
-    description: "Firma paneli ozeti",
+    description: "Firma paneli özeti",
   },
   {
     href: "/app/company",
@@ -46,42 +51,42 @@ export const businessAdminNav: PanelNavItem[] = [
   {
     href: "/app/domain",
     label: "Domain",
-    description: "Domain baglama ve durum",
+    description: "Domain bağlama ve durum",
   },
   {
     href: "/app/media",
     label: "Media",
-    description: "Gorsel medya yonetimi",
+    description: "Görsel medya yönetimi",
   },
   {
     href: "/app/services",
     label: "Services",
-    description: "Hizmet kayitlari",
+    description: "Hizmet kayıtları",
   },
   {
     href: "/app/vehicles",
     label: "Vehicles",
-    description: "Araç kayitlari",
+    description: "Araç kayıtları",
   },
   {
     href: "/app/routes",
     label: "Routes",
-    description: "Rota kayitlari",
+    description: "Rota kayıtları",
   },
   {
     href: "/app/blog",
     label: "Blog",
-    description: "Blog icerikleri",
+    description: "Blog içerikleri",
   },
   {
     href: "/app/seo",
     label: "SEO",
-    description: "Meta alanlari",
+    description: "Meta alanları",
   },
   {
     href: "/app/languages",
     label: "Languages",
-    description: "Dil icerikleri",
+    description: "Dil içerikleri",
   },
   {
     href: "/app/publishing",
@@ -109,6 +114,11 @@ export const businessAdminNav: PanelNavItem[] = [
     description: "Global business araması",
   },
   {
+    href: "/app/analytics",
+    label: "Analytics",
+    description: "Ziyaret ve dönüşüm özeti",
+  },
+  {
     href: "/app/notifications",
     label: "Bildirimler",
     description: "Okunmamış ve geçmiş bildirimler",
@@ -116,7 +126,7 @@ export const businessAdminNav: PanelNavItem[] = [
   {
     href: "/app/operation",
     label: "Operation",
-    description: "Gunluk operasyon",
+    description: "Günlük operasyon",
   },
   {
     href: "/app/finance",
@@ -126,11 +136,11 @@ export const businessAdminNav: PanelNavItem[] = [
   {
     href: "/app/customers",
     label: "Customers",
-    description: "CRM ve musteriler",
+    description: "CRM ve müşteriler",
   },
   {
     href: "/app/password",
     label: "Password",
-    description: "Admin sifresi",
+    description: "Admin şifresi",
   },
 ];

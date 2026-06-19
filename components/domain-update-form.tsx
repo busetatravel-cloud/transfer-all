@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
+import type { BusinessRecord } from "@/lib/business";
+import { formatDomainStatusLabel } from "@/lib/domain-utils";
 
 type Props = {
   businessId: string;
   domain: string | null;
-  domainStatus: "pending" | "verified" | "active";
+  domainStatus: BusinessRecord["domainStatus"];
 };
 
 type FormState = {
@@ -38,10 +40,10 @@ export function DomainUpdateForm({ businessId, domain, domainStatus }: Props) {
 
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | { error?: string; message?: string }
         | null;
       setState({
-        error: body?.error ?? "Domain güncellenemedi.",
+        error: body?.message ?? body?.error ?? "Domain güncellenemedi.",
         success: null,
       });
       return;
@@ -58,20 +60,28 @@ export function DomainUpdateForm({ businessId, domain, domainStatus }: Props) {
   }
 
   return (
-    <form className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4" onSubmit={handleSubmit}>
+    <form
+      className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+      onSubmit={handleSubmit}
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field name="domain" label="Domain" defaultValue={domain ?? ""} placeholder="firma.com" />
         <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Domain status</span>
+          <span className="text-sm font-medium text-slate-700">Domain durumu</span>
           <select
             className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
             name="domainStatus"
             defaultValue={domainStatus}
           >
             <option value="pending">pending</option>
+            <option value="dns_detected">dns_detected</option>
             <option value="verified">verified</option>
             <option value="active">active</option>
+            <option value="failed">failed</option>
           </select>
+          <span className="text-xs text-slate-500">
+            Etiket: {formatDomainStatusLabel(domainStatus)}
+          </span>
         </label>
       </div>
 

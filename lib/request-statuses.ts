@@ -24,9 +24,13 @@ export function formatBookingStatusLabel(value: string | null | undefined) {
     in_progress: "Şoför Atandı",
     completed: "Tamamlandı",
     archived: "İptal",
+    "OnaylandÄ±": "Onaylandı",
+    "ÅofÃ¶r AtandÄ±": "Şoför Atandı",
+    "TamamlandÄ±": "Tamamlandı",
+    "Ä°ptal": "İptal",
   };
 
-  return map[normalized.toLowerCase()] ?? "Bekliyor";
+  return map[normalized] ?? map[normalized.toLowerCase()] ?? "Bekliyor";
 }
 
 export const PAYMENT_STATUS_OPTIONS = [
@@ -67,7 +71,13 @@ export function formatPaymentStatusLabel(value: string | null | undefined) {
     cancelled: "İptal",
     iptal: "İptal",
     archived: "İptal",
+    "Ã–denmedi": "Ödenmedi",
+    "Kapora AlÄ±ndÄ±": "Kapora Alındı",
+    "Ã–dendi": "Ödendi",
+    "AraÃ§ta Tahsil": "Araçta Tahsil",
+    "Ä°ade": "İade",
+    "Ä°ptal": "İptal",
   };
 
-  return map[normalized.toLowerCase()] ?? "Ödenmedi";
+  return map[normalized] ?? map[normalized.toLowerCase()] ?? "Ödenmedi";
 }

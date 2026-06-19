@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireBusinessSession } from "@/lib/auth";
+import { getBusinessAnalyticsSummary } from "@/lib/analytics";
 import { getBusinessPanelData } from "@/lib/business-panel";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { listTasks } from "@/lib/tasks";
@@ -21,6 +22,7 @@ const modules = [
   { href: "/app/reservations", title: "Reservations", description: "Rezervasyonlar." },
   { href: "/app/tasks", title: "Görevler", description: "Hatırlatmalar ve iş akışları." },
   { href: "/app/search", title: "Arama", description: "Global business araması." },
+  { href: "/app/analytics", title: "Analytics", description: "Ziyaret ve dönüşüm." },
   { href: "/app/publishing", title: "Yayın Merkezi", description: "Taslak ve yayın geçmişi." },
   { href: "/app/operation", title: "Operation", description: "Günlük operasyon." },
   { href: "/app/finance", title: "Finance", description: "Tahsilat ve ciro." },
@@ -30,9 +32,12 @@ const modules = [
 
 export default async function BusinessDashboardPage() {
   const session = await requireBusinessSession();
-  const panel = await getBusinessPanelData(session.businessId);
-  const tasks = await listTasks(session.businessId);
-  const unreadNotifications = await getUnreadNotificationCount(session.businessId);
+  const [panel, tasks, unreadNotifications, analytics] = await Promise.all([
+    getBusinessPanelData(session.businessId),
+    listTasks(session.businessId),
+    getUnreadNotificationCount(session.businessId),
+    getBusinessAnalyticsSummary(session.businessId),
+  ]);
 
   if (!panel.business) {
     return (
@@ -55,7 +60,6 @@ export default async function BusinessDashboardPage() {
   const reservations = panel.requests;
   const today = new Date();
   const todayKey = toDateKey(today);
-  const tomorrowKey = toDateKey(addDays(today, 1));
   const weekEndKey = toDateKey(addDays(today, 7));
 
   const taskStats = {
@@ -80,7 +84,6 @@ export default async function BusinessDashboardPage() {
     paymentDue: reservations.filter((reservation) =>
       ["Ödenmedi", "Kapora Alındı"].includes(reservation.paymentStatus),
     ).length,
-    tomorrow: reservations.filter((reservation) => reservation.travelDate === tomorrowKey).length,
   };
 
   return (
@@ -128,16 +131,12 @@ export default async function BusinessDashboardPage() {
         </article>
 
         <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold tracking-tight text-slate-950">
-            Paket bilgisi
-          </h2>
-          <p className="mt-2 text-sm leading-7 text-slate-600">
-            Bu alan yalnızca görüntüleme amaçlıdır.
-          </p>
-          <div className="mt-4 grid gap-3">
-            <Metric label="Mevcut paket" value={panel.business.packageName ?? "Plan yok"} />
-            <Metric label="Başlangıç" value={formatDate(panel.business.packageStart)} />
-            <Metric label="Bitiş" value={formatDate(panel.business.packageEnd)} />
+          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Analytics özeti</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Metric label="Bugün ziyaret" value={String(analytics.todayVisits)} />
+            <Metric label="Toplam ziyaret" value={String(analytics.totalVisits)} />
+            <Metric label="Dönüşüm" value={String(analytics.conversions)} />
+            <Metric label="Oran" value={`${analytics.conversionRate}%`} />
           </div>
         </article>
 
@@ -158,8 +157,31 @@ export default async function BusinessDashboardPage() {
               Bildirimlere git
             </Link>
           </div>
-          <div className="mt-4 max-w-sm">
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <Metric label="Okunmamış bildirim" value={String(unreadNotifications)} />
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                En çok ziyaret edilen sayfalar
+              </div>
+              <div className="mt-3 grid gap-2">
+                {analytics.popularPages.slice(0, 3).length ? (
+                  analytics.popularPages.slice(0, 3).map((item) => (
+                    <div
+                      key={`${item.pagePath}-${item.pageType}`}
+                      className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                    >
+                      <div>
+                        <div className="font-medium text-slate-900">{item.pageType}</div>
+                        <div className="text-slate-500">{item.pagePath}</div>
+                      </div>
+                      <div className="font-semibold text-slate-900">{item.visits}</div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">Henüz yeterli veri yok.</p>
+                )}
+              </div>
+            </div>
           </div>
         </article>
       </section>
@@ -213,20 +235,4 @@ function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
-}
-
-function formatDate(value: string | null) {
-  if (!value) {
-    return "Yok";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "medium",
-  }).format(date);
 }

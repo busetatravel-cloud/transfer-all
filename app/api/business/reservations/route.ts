@@ -66,10 +66,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const body = (await request.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
 
   console.info("business.reservations.post", {
     businessId: auth.session.businessId,

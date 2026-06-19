@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBusinessById, getActiveBusinessByDomain } from "@/lib/business";
+import { recordBusinessAnalyticsEvent } from "@/lib/analytics";
 import { createBusinessRequest } from "@/lib/requests";
 import { isPlatformHost, normalizeHost } from "@/lib/platform";
 
@@ -19,6 +20,8 @@ async function resolvePreviewBusiness(businessId: string) {
 
 export async function POST(request: Request) {
   const host = getRequestHost(request);
+  const referrer = request.headers.get("referer") ?? "";
+  const userAgent = request.headers.get("user-agent") ?? "";
   const body = (await request.json().catch(() => null)) as
     | {
         businessId?: string;
@@ -64,6 +67,21 @@ export async function POST(request: Request) {
       source: "web",
       bookingStatus: "Bekliyor",
     });
+
+    try {
+      await recordBusinessAnalyticsEvent(business.id, {
+        eventName: "conversion",
+        pagePath: "/quote",
+        pageType: "quote",
+        referrer,
+        userAgent,
+      });
+    } catch (error) {
+      console.warn("analytics.conversion.failed", {
+        businessId: business.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     return NextResponse.json({
       ok: true,

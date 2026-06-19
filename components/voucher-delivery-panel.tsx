@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import type { ReservationRecord } from "@/lib/reservation-types";
 import type { BusinessVoucherRecord } from "@/lib/vouchers";
+import {
+  buildVoucherLinkPlaceholder,
+  buildVoucherMailTemplate,
+} from "@/lib/voucher-mail";
+import { buildVoucherWhatsAppTemplate } from "@/lib/voucher-whatsapp";
 
 type Channel = "mail" | "whatsapp";
 
@@ -16,47 +21,6 @@ type Props = {
   reservation: ReservationRecord;
   voucher: BusinessVoucherRecord;
 };
-
-function buildVoucherLinkPlaceholder(voucherId: string) {
-  void voucherId;
-  return "{{voucher_link}}";
-}
-
-function buildMailTemplate(
-  reservation: ReservationRecord,
-  voucher: BusinessVoucherRecord,
-  voucherLink: string,
-) {
-  const subject = `Rezervasyon Onayı - ${reservation.customerName}`;
-  const body = [
-    `Müşteri: ${reservation.customerName}`,
-    `Rezervasyon No: ${voucher.documentNo}`,
-    `Tarih/Saat: ${reservation.travelDate ?? "-"} ${reservation.travelTime ?? ""}`.trim(),
-    `Nereden: ${reservation.origin ?? "-"}`,
-    `Nereye: ${reservation.destination ?? "-"}`,
-    `Voucher Link: ${voucherLink}`,
-    "",
-    "Saygılarımızla",
-    voucher.businessName,
-  ].join("\n");
-
-  return { subject, body };
-}
-
-function buildWhatsAppTemplate(
-  reservation: ReservationRecord,
-  voucher: BusinessVoucherRecord,
-  voucherLink: string,
-) {
-  return [
-    `Merhaba ${reservation.customerName},`,
-    "",
-    `Rezervasyon No: ${voucher.documentNo}`,
-    `Tarih/Saat: ${reservation.travelDate ?? "-"} ${reservation.travelTime ?? ""}`.trim(),
-    `Nereden/Nereye: ${reservation.origin ?? "-"} → ${reservation.destination ?? "-"}`,
-    `Voucher: ${voucherLink}`,
-  ].join("\n");
-}
 
 async function copyToClipboard(value: string) {
   if (typeof navigator === "undefined" || !navigator.clipboard) {
@@ -73,7 +37,7 @@ async function createDeliveryLog(args: {
   channel: Channel;
   recipient: string;
   messagePreview: string;
-  status: "draft" | "copied";
+  status: "draft" | "copied" | "sent_placeholder" | "sent" | "failed";
 }) {
   const response = await fetch("/api/business/voucher-delivery", {
     method: "POST",
@@ -95,16 +59,105 @@ async function createDeliveryLog(args: {
     }),
   });
 
-  const body = await response.json().catch(() => null);
+  const body = (await response.json().catch(() => null)) as
+    | {
+        ok?: boolean;
+        log?: DeliveryLog;
+        message?: string;
+      }
+    | null;
 
   if (!response.ok) {
-    throw new Error(
-      (body && typeof body === "object" && "message" in body && String((body as { message?: string }).message)) ||
-        "Voucher logu kaydedilemedi.",
-    );
+    throw new Error(body?.message || "Voucher logu kaydedilemedi.");
   }
 
   return body as { ok: true; log?: DeliveryLog };
+}
+
+async function sendMail(args: {
+  reservationId: string;
+  voucherId: string;
+  recipient: string;
+  messagePreview: string;
+}) {
+  const response = await fetch("/api/business/voucher-delivery", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      action: "send",
+      section: "voucher_delivery",
+      payload: {
+        reservationId: args.reservationId,
+        voucherId: args.voucherId,
+        channel: "mail",
+        recipient: args.recipient,
+        messagePreview: args.messagePreview,
+        status: "draft",
+      },
+    }),
+  });
+
+  const body = (await response.json().catch(() => null)) as
+    | {
+        ok?: boolean;
+        log?: DeliveryLog;
+        provider?: string;
+        status?: string;
+        message?: string;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(body?.message || "Mail gönderilemedi.");
+  }
+
+  return body as { ok: true; log?: DeliveryLog; provider?: string; status?: string };
+}
+
+async function sendWhatsApp(args: {
+  reservationId: string;
+  voucherId: string;
+  recipient: string;
+  messagePreview: string;
+}) {
+  const response = await fetch("/api/business/voucher-delivery", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      action: "send",
+      section: "voucher_delivery",
+      payload: {
+        reservationId: args.reservationId,
+        voucherId: args.voucherId,
+        channel: "whatsapp",
+        recipient: args.recipient,
+        messagePreview: args.messagePreview,
+        status: "draft",
+      },
+    }),
+  });
+
+  const body = (await response.json().catch(() => null)) as
+    | {
+        ok?: boolean;
+        log?: DeliveryLog;
+        provider?: string;
+        status?: string;
+        message?: string;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(body?.message || "WhatsApp gönderilemedi.");
+  }
+
+  return body as { ok: true; log?: DeliveryLog; provider?: string; status?: string };
 }
 
 export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
@@ -112,23 +165,33 @@ export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
     () => buildVoucherLinkPlaceholder(voucher.id),
     [voucher.id],
   );
+  const mailTemplate = useMemo(
+    () =>
+      buildVoucherMailTemplate(reservation, voucher, {
+        voucherLink,
+        businessName: voucher.businessName,
+      }),
+    [reservation, voucher, voucherLink],
+  );
+  const whatsappTemplate = useMemo(
+    () =>
+      buildVoucherWhatsAppTemplate(reservation, voucher, {
+        voucherLink,
+        businessName: voucher.businessName,
+      }),
+    [reservation, voucher, voucherLink],
+  );
+
   const [mailPreview, setMailPreview] = useState("");
   const [whatsappPreview, setWhatsAppPreview] = useState("");
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [copiedState, setCopiedState] = useState<Channel | null>(null);
+  const [sendingMail, setSendingMail] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
   async function prepareChannel(channel: Channel) {
-    const mailTemplate = buildMailTemplate(reservation, voucher, voucherLink);
-    const whatsappTemplate = buildWhatsAppTemplate(
-      reservation,
-      voucher,
-      voucherLink,
-    );
-    const preview =
-      channel === "mail"
-        ? `${mailTemplate.subject}\n\n${mailTemplate.body}`
-        : whatsappTemplate;
+    const preview = channel === "mail" ? mailTemplate.preview : whatsappTemplate.preview;
 
     if (channel === "mail") {
       setMailPreview(preview);
@@ -146,8 +209,8 @@ export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
         channel,
         recipient:
           channel === "mail"
-            ? reservation.email ?? "mail-bekleniyor"
-            : reservation.phone ?? "telefon-bekleniyor",
+            ? mailTemplate.recipient || "mail-bekleniyor"
+            : whatsappTemplate.recipient || "telefon-bekleniyor",
         messagePreview: preview,
         status: "draft",
       });
@@ -175,8 +238,8 @@ export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
         channel,
         recipient:
           channel === "mail"
-            ? reservation.email ?? "mail-bekleniyor"
-            : reservation.phone ?? "telefon-bekleniyor",
+            ? mailTemplate.recipient || "mail-bekleniyor"
+            : whatsappTemplate.recipient || "telefon-bekleniyor",
         messagePreview: preview,
         status: "copied",
       });
@@ -185,12 +248,120 @@ export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
     }
   }
 
+  async function handleSendMail() {
+    if (sendingMail) {
+      return;
+    }
+
+    const preview = mailPreview.trim() ? mailPreview : mailTemplate.preview;
+    const recipient = mailTemplate.recipient;
+
+    if (!recipient) {
+      setStatusMessage("Mail göndermek için müşteri emaili gerekli.");
+      try {
+        await createDeliveryLog({
+          reservationId: reservation.id,
+          voucherId: voucher.id,
+          channel: "mail",
+          recipient: "",
+          messagePreview: preview,
+          status: "failed",
+        });
+      } catch {
+        // ignore log errors
+      }
+      return;
+    }
+
+    setSendingMail(true);
+    setStatusMessage("Mail gönderiliyor...");
+
+    try {
+      const result = await sendMail({
+        reservationId: reservation.id,
+        voucherId: voucher.id,
+        recipient,
+        messagePreview: preview,
+      });
+
+      setActiveChannel("mail");
+      setMailPreview(preview);
+      setStatusMessage(
+        result.status === "sent"
+          ? "Mail gönderildi."
+          : "Mail gönderim hazırlığı tamamlandı.",
+      );
+      setCopiedState(null);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error && error.message ? error.message : "Mail gönderilemedi.",
+      );
+    } finally {
+      setSendingMail(false);
+    }
+  }
+
+  async function handleSendWhatsApp() {
+    if (sendingWhatsApp) {
+      return;
+    }
+
+    const preview = whatsappPreview.trim() ? whatsappPreview : whatsappTemplate.preview;
+    const recipient = whatsappTemplate.recipient;
+
+    if (!recipient) {
+      setStatusMessage("WhatsApp göndermek için müşteri telefonu gerekli.");
+      try {
+        await createDeliveryLog({
+          reservationId: reservation.id,
+          voucherId: voucher.id,
+          channel: "whatsapp",
+          recipient: "",
+          messagePreview: preview,
+          status: "failed",
+        });
+      } catch {
+        // ignore log errors
+      }
+      return;
+    }
+
+    setSendingWhatsApp(true);
+    setStatusMessage("WhatsApp gönderiliyor...");
+
+    try {
+      const result = await sendWhatsApp({
+        reservationId: reservation.id,
+        voucherId: voucher.id,
+        recipient,
+        messagePreview: preview,
+      });
+
+      setActiveChannel("whatsapp");
+      setWhatsAppPreview(preview);
+      setStatusMessage(
+        result.status === "sent"
+          ? "WhatsApp gönderildi."
+          : "WhatsApp gönderim hazırlığı tamamlandı.",
+      );
+      setCopiedState(null);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "WhatsApp gönderilemedi.",
+      );
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  }
+
   return (
     <section className="grid gap-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
       <div className="grid gap-1">
         <div className="text-sm font-semibold text-slate-950">Gönderim hazırlığı</div>
         <p className="text-sm leading-6 text-slate-500">
-          Gerçek gönderim yok. Sadece şablon ve log oluşturulur.
+          Gerçek gönderim, provider env varsa denenir. Aksi halde placeholder log yazılır.
         </p>
       </div>
 
@@ -203,11 +374,27 @@ export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
           Mail hazırla
         </button>
         <button
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+          type="button"
+          disabled={sendingMail}
+          onClick={() => void handleSendMail()}
+        >
+          Mail Gönder
+        </button>
+        <button
           className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           type="button"
           onClick={() => void prepareChannel("whatsapp")}
         >
           WhatsApp mesajı hazırla
+        </button>
+        <button
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
+          type="button"
+          disabled={sendingWhatsApp}
+          onClick={() => void handleSendWhatsApp()}
+        >
+          WhatsApp Gönder
         </button>
       </div>
 
@@ -260,7 +447,7 @@ export function VoucherDeliveryPanel({ reservation, voucher }: Props) {
             readOnly
             value={
               whatsappPreview ||
-              "WhatsApp mesajı hazırla butonuna basın. Müşteri adı, rezervasyon no, tarih/saat, nereden/nereye ve voucher link burada görünecek."
+              "WhatsApp mesajı hazırla butonuna basın. Müşteri telefonu, rezervasyon no, tarih/saat, nereden/nereye ve voucher link burada görünecek."
             }
           />
           {copiedState === "whatsapp" ? (

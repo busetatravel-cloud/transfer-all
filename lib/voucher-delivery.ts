@@ -8,6 +8,7 @@ export type VoucherDeliveryStatus =
   | "draft"
   | "copied"
   | "sent_placeholder"
+  | "sent"
   | "failed";
 
 export type VoucherDeliveryLogRecord = {

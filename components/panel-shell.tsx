@@ -91,7 +91,7 @@ export function PanelShell({
               onClick={handleLogout}
               type="button"
             >
-              Cikis yap
+              Çıkış yap
             </button>
           </div>
         </aside>

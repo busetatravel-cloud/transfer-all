@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { DomainUpdateForm } from "@/components/domain-update-form";
 import type { BusinessListRecord } from "@/lib/business";
+import { formatDomainStatusLabel, formatSslStatusLabel } from "@/lib/domain-utils";
 
 type Props = {
   business: BusinessListRecord;
@@ -146,8 +147,10 @@ export function SuperAdminBusinessCard({ business }: Props) {
 
       <dl className="mt-4 grid gap-3 text-sm text-slate-600">
         <Detail label="Business email" value={business.email} />
-        <Detail label="Domain" value={business.domain ?? "Not set"} />
-        <Detail label="Status" value={business.domainStatus} />
+        <Detail label="Domain" value={business.hostname ?? business.domain ?? "Not set"} />
+        <Detail label="Status" value={formatDomainStatusLabel(business.domainStatus)} />
+        <Detail label="SSL" value={formatSslStatusLabel(business.sslStatus)} />
+        <Detail label="Son kontrol" value={formatDateTime(business.lastCheckedAt)} />
         <Detail label="Paket" value={business.packageName ?? "Plan yok"} />
         <Detail
           label="Abonelik durumu"
