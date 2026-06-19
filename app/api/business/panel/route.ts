@@ -14,6 +14,47 @@ function toBooleanValue(value: unknown) {
   return false;
 }
 
+function normalizeString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalString(value: unknown) {
+  const safe = normalizeString(value);
+  return safe || undefined;
+}
+
+function extractErrorCode(error: unknown) {
+  if (typeof error === "object" && error && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" && code.trim() ? code : "update_failed";
+  }
+
+  return "update_failed";
+}
+
+function validateReservationPayload(body: Record<string, unknown> | null) {
+  const fieldErrors: Record<string, string> = {};
+  const customerName = normalizeString(body?.customerName);
+  const origin = normalizeString(body?.origin);
+  const destination = normalizeString(body?.destination);
+  const travelDate = normalizeString(body?.travelDate);
+  const travelTime = normalizeString(body?.travelTime);
+
+  if (!customerName) fieldErrors.customerName = "Musteri adı gerekli.";
+  if (!origin) fieldErrors.origin = "Nereden alanı gerekli.";
+  if (!destination) fieldErrors.destination = "Nereye alanı gerekli.";
+  if (!travelDate) fieldErrors.travelDate = "Tarih gerekli.";
+  if (!travelTime) fieldErrors.travelTime = "Saat gerekli.";
+
+  return {
+    ok: Object.keys(fieldErrors).length === 0,
+    fieldErrors,
+  };
+}
+
+void normalizeOptionalString;
+void validateReservationPayload;
+
 export async function GET() {
   const auth = await requireApiBusinessSession();
 
@@ -41,6 +82,12 @@ export async function PATCH(request: Request) {
     unknown
   > | null;
 
+  console.info("business.panel.patch", {
+    section: body?.section,
+    action: body?.action,
+    payload: body?.payload ?? body,
+  });
+
   const section = body?.section;
 
   if (
@@ -52,7 +99,6 @@ export async function PATCH(request: Request) {
       "logo",
       "hero",
       "media",
-      "reservation",
       "customer",
       "service",
       "vehicle",
@@ -69,6 +115,17 @@ export async function PATCH(request: Request) {
   }
 
   try {
+    if (section === "reservation") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "reservation_moved",
+          message: "Rezervasyon işlemi artık /api/business/reservations üzerinden yönetiliyor.",
+        },
+        { status: 400 },
+      );
+    }
+
     const payload =
       section === "business"
         ? {
@@ -129,38 +186,6 @@ export async function PATCH(request: Request) {
                   cover: toBooleanValue(body?.cover),
                   sortOrder: Number(body?.sortOrder ?? 0),
                 }
-            : section === "reservation"
-              ? {
-                  section,
-                  action: toStringValue(body?.action) || undefined,
-                  recordId: toStringValue(body?.recordId) || undefined,
-                  customerName: toStringValue(body?.customerName),
-                  phone: toStringValue(body?.phone),
-                  email: toStringValue(body?.email),
-                  country: toStringValue(body?.country),
-                  language: toStringValue(body?.language),
-                  origin: toStringValue(body?.origin),
-                  destination: toStringValue(body?.destination),
-                  travelDate: toStringValue(body?.travelDate),
-                  travelTime: toStringValue(body?.travelTime),
-                  flightCode: toStringValue(body?.flightCode),
-                  adults: Number(body?.adults ?? 0),
-                  children: Number(body?.children ?? 0),
-                  infants: Number(body?.infants ?? 0),
-                  vehicleCategory: toStringValue(body?.vehicleCategory),
-                  vehicleName: toStringValue(body?.vehicleName),
-                  assignedVehicle: toStringValue(body?.assignedVehicle),
-                  driverName: toStringValue(body?.driverName),
-                  totalAmount: toStringValue(body?.totalAmount),
-                  depositAmount: toStringValue(body?.depositAmount),
-                  remainingAmount: toStringValue(body?.remainingAmount),
-                  currency: toStringValue(body?.currency),
-                  paymentStatus: toStringValue(body?.paymentStatus),
-                  notes: toStringValue(body?.notes),
-                  source: toStringValue(body?.source),
-                  bookingStatus: toStringValue(body?.bookingStatus),
-                  message: toStringValue(body?.message),
-                }
             : section === "customer"
               ? {
                   section,
@@ -217,6 +242,12 @@ export async function PATCH(request: Request) {
                       ),
                     };
 
+    console.info("business.panel.payload", {
+      section,
+      action: payload.action,
+      payload,
+    });
+
     const panel = await updateBusinessPanelSection(
       auth.session.businessId,
       payload as Parameters<typeof updateBusinessPanelSection>[1],
@@ -226,6 +257,19 @@ export async function PATCH(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Guncelleme basarisiz.";
-    return NextResponse.json({ error: message }, { status: 400 });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: extractErrorCode(error),
+        message,
+        fieldErrors:
+          typeof error === "object" && error && "fieldErrors" in error
+            ? (error as { fieldErrors?: Record<string, string> }).fieldErrors ?? null
+            : null,
+        stack: error instanceof Error ? error.stack ?? null : null,
+      },
+      { status: 400 },
+    );
   }
 }

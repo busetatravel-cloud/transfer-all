@@ -63,6 +63,9 @@ export type BusinessRequestRecord = {
   travelDate: string | null;
   travelTime: string | null;
   flightCode: string | null;
+  adultCount: number;
+  childCount: number;
+  babyCount: number;
   adults: number;
   children: number;
   infants: number;
@@ -70,6 +73,8 @@ export type BusinessRequestRecord = {
   vehicleName: string | null;
   assignedVehicle: string | null;
   driverName: string | null;
+  pickupStatus: string | null;
+  operationNotes: string | null;
   totalAmount: number | null;
   depositAmount: number | null;
   remainingAmount: number | null;
@@ -97,25 +102,37 @@ export type BusinessRequestInput = {
   language?: string;
   origin?: string;
   destination?: string;
+  fromLocation?: string;
+  toLocation?: string;
   travelDate?: string;
   travelTime?: string;
   flightCode?: string;
+  adultCount?: number | string;
+  childCount?: number | string;
+  babyCount?: number | string;
   adults?: number | string;
   children?: number | string;
   infants?: number | string;
   vehicleCategory?: string;
   vehicleName?: string;
+  vehicle?: string;
   assignedVehicle?: string;
   driverName?: string;
   totalAmount?: number | string;
+  total?: number | string;
   depositAmount?: number | string;
+  deposit?: number | string;
   remainingAmount?: number | string;
+  remaining?: number | string;
   currency?: string;
   paymentStatus?: string;
   notes?: string;
+  note?: string;
   source?: string;
   bookingStatus?: string;
   message?: string;
+  pickupStatus?: string;
+  operationNotes?: string;
 };
 
 function nowIso() {
@@ -132,6 +149,11 @@ function normalizeText(value?: string) {
   return safe || null;
 }
 
+function normalizeOptionalText(value?: string | null) {
+  const safe = String(value ?? "").trim();
+  return safe || null;
+}
+
 function normalizeCount(value?: number | string) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
@@ -144,6 +166,29 @@ function normalizeAmount(value?: number | string) {
 
   const parsed = Number(String(value).replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildRequestMessage(params: {
+  customerName: string;
+  fromLocation: string | null;
+  toLocation: string | null;
+  travelDate: string | null;
+  travelTime: string | null;
+  fallback?: string;
+}) {
+  const parts = [
+    params.customerName.trim(),
+    [params.fromLocation, params.toLocation].filter(Boolean).join(" → "),
+    [params.travelDate, params.travelTime].filter(Boolean).join(" "),
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return params.fallback ?? "Manuel rezervasyon";
+  }
+
+  return parts.join(" - ");
 }
 
 function normalizePaymentStatusValue(value?: string) {
@@ -202,6 +247,9 @@ const demoRequests = new Map<string, BusinessRequestRecord[]>([
         travelDate: "2026-06-10",
         travelTime: "10:30",
         flightCode: "TK123",
+        adultCount: 2,
+        childCount: 1,
+        babyCount: 0,
         adults: 2,
         children: 1,
         infants: 0,
@@ -209,6 +257,8 @@ const demoRequests = new Map<string, BusinessRequestRecord[]>([
         vehicleName: "VIP Van",
         assignedVehicle: "VIP Van",
         driverName: "Demo Driver",
+        pickupStatus: null,
+        operationNotes: null,
         totalAmount: 1200,
         depositAmount: 300,
         remainingAmount: 900,
@@ -259,18 +309,23 @@ function mapRequest(row: Record<string, unknown>): BusinessRequestRecord {
     email: (row.email as string | null) ?? null,
     country: (row.country as string | null) ?? null,
     language: (row.language as string | null) ?? null,
-    origin: (row.origin as string | null) ?? null,
-    destination: (row.destination as string | null) ?? null,
+    origin: (row.from_location as string | null) ?? null,
+    destination: (row.to_location as string | null) ?? null,
     travelDate: (row.travel_date as string | null) ?? null,
     travelTime: (row.travel_time as string | null) ?? null,
     flightCode: (row.flight_code as string | null) ?? null,
-    adults: Number(row.adults ?? 0),
-    children: Number(row.children ?? 0),
-    infants: Number(row.infants ?? 0),
+    adultCount: Number(row.adult_count ?? 0),
+    childCount: Number(row.child_count ?? 0),
+    babyCount: Number(row.baby_count ?? 0),
+    adults: Number(row.adult_count ?? 0),
+    children: Number(row.child_count ?? 0),
+    infants: Number(row.baby_count ?? 0),
     vehicleCategory: (row.vehicle_category as string | null) ?? null,
     vehicleName: (row.vehicle_name as string | null) ?? null,
     assignedVehicle: (row.assigned_vehicle as string | null) ?? null,
     driverName: (row.driver_name as string | null) ?? null,
+    pickupStatus: (row.pickup_status as string | null) ?? null,
+    operationNotes: (row.operation_notes as string | null) ?? null,
     totalAmount:
       row.total_amount === null || row.total_amount === undefined
         ? null
@@ -287,7 +342,7 @@ function mapRequest(row: Record<string, unknown>): BusinessRequestRecord {
     paymentStatus:
       (row.payment_status as BusinessRequestRecord["paymentStatus"]) ?? "Ödenmedi",
     notes: (row.notes as string | null) ?? null,
-    source: (row.source as string | null) ?? "web",
+    source: (row.source as string | null) ?? "Manuel",
     bookingStatus,
     message: String(row.message ?? row.notes ?? ""),
     status:
@@ -304,16 +359,22 @@ function mapRequest(row: Record<string, unknown>): BusinessRequestRecord {
 }
 
 function buildRequestPayload(businessId: string, input: BusinessRequestInput) {
-  const source = normalizeText(input.source) ?? "web";
+  const source = normalizeText(input.source) ?? "Manuel";
   const bookingStatus = formatBookingStatusLabel(input.bookingStatus);
   const customerName = input.customerName.trim();
-  const notes = normalizeText(input.notes);
-  const origin = normalizeText(input.origin);
-  const destination = normalizeText(input.destination);
+  const note = normalizeText(input.notes);
+  const fromLocation = normalizeText(input.fromLocation ?? input.origin);
+  const toLocation = normalizeText(input.toLocation ?? input.destination);
   const message =
     normalizeText(input.message) ??
-    notes ??
-    ([origin, destination].filter(Boolean).join(" - ") || "Rezervasyon kaydi");
+    buildRequestMessage({
+      customerName,
+      fromLocation,
+      toLocation,
+      travelDate: normalizeText(input.travelDate),
+      travelTime: normalizeText(input.travelTime),
+      fallback: note ?? "Manuel rezervasyon",
+    });
 
   return {
     business_id: businessId,
@@ -322,24 +383,26 @@ function buildRequestPayload(businessId: string, input: BusinessRequestInput) {
     email: normalizeEmail(input.email),
     country: normalizeText(input.country),
     language: normalizeText(input.language),
-    origin,
-    destination,
+    from_location: fromLocation,
+    to_location: toLocation,
     travel_date: normalizeText(input.travelDate),
     travel_time: normalizeText(input.travelTime),
     flight_code: normalizeText(input.flightCode),
-    adults: normalizeCount(input.adults),
-    children: normalizeCount(input.children),
-    infants: normalizeCount(input.infants),
+    adult_count: normalizeCount(input.adultCount ?? input.adults),
+    child_count: normalizeCount(input.childCount ?? input.children),
+    baby_count: normalizeCount(input.babyCount ?? input.infants),
     vehicle_category: normalizeText(input.vehicleCategory),
     vehicle_name: normalizeText(input.vehicleName),
-    assigned_vehicle: normalizeText(input.assignedVehicle),
-    driver_name: normalizeText(input.driverName),
     total_amount: normalizeAmount(input.totalAmount),
     deposit_amount: normalizeAmount(input.depositAmount),
     remaining_amount: normalizeAmount(input.remainingAmount),
     currency: normalizeText(input.currency) ?? "TRY",
     payment_status: normalizePaymentStatusValue(input.paymentStatus),
-    notes,
+    assigned_vehicle: normalizeText(input.assignedVehicle),
+    driver_name: normalizeText(input.driverName),
+    pickup_status: normalizeText(input.pickupStatus),
+    operation_notes: normalizeText(input.operationNotes),
+    notes: note,
     source,
     booking_status: bookingStatus,
     status: "new",
@@ -347,10 +410,24 @@ function buildRequestPayload(businessId: string, input: BusinessRequestInput) {
   };
 }
 
+function logRequestCreateInput(
+  businessId: string,
+  input: BusinessRequestInput,
+) {
+  console.info("request.create", {
+    businessId,
+    customerName: String(input.customerName ?? "").trim(),
+    from: normalizeOptionalText(input.origin),
+    to: normalizeOptionalText(input.destination),
+    date: normalizeOptionalText(input.travelDate),
+    time: normalizeOptionalText(input.travelTime),
+  });
+}
+
 export async function getBusinessRequests(businessId: string) {
   if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,origin,destination,travel_date,travel_time,flight_code,adults,children,infants,vehicle_category,vehicle_name,assigned_vehicle,driver_name,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_status,operation_notes,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
         businessId,
       )}&order=created_at.desc`,
     );
@@ -366,15 +443,45 @@ export async function getBusinessRequests(businessId: string) {
   return demoRequests.get(businessId)?.slice() ?? [];
 }
 
+export async function getBusinessRequestById(
+  businessId: string,
+  requestId: string,
+) {
+  if (hasSupabaseConnection()) {
+    const response = await supabaseFetch(
+      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_status,operation_notes,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
+        requestId,
+      )}&business_id=eq.${encodeURIComponent(businessId)}&limit=1`,
+    );
+
+    if (response?.ok) {
+      const rows = (await response.json().catch(() => [])) as Array<
+        Record<string, unknown>
+      >;
+      return rows[0] ? mapRequest(rows[0]) : null;
+    }
+
+    return null;
+  }
+
+  return (
+    demoRequests.get(businessId)?.find((entry) => entry.id === requestId) ?? null
+  );
+}
+
 export async function createBusinessRequest(
   businessId: string,
   input: BusinessRequestInput,
 ) {
+  logRequestCreateInput(businessId, input);
   const payload = buildRequestPayload(businessId, input);
 
   if (hasSupabaseConnection()) {
     const response = await supabaseFetch(`/requests`, {
       method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
       body: JSON.stringify(payload),
     });
 
@@ -395,53 +502,20 @@ export async function createBusinessRequest(
         source: created.source,
         notes: created.notes ?? created.message ?? undefined,
       });
+      try {
+        const { syncBusinessVoucherFromRequest } = await import("./vouchers");
+        await syncBusinessVoucherFromRequest(businessId, created);
+      } catch (error) {
+        console.warn("voucher.create.failed", {
+          businessId,
+          requestId: created.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       return created;
     }
 
-    const fallback = {
-      id: randomUUID(),
-      businessId,
-      customerName: payload.customer_name,
-      phone: payload.phone,
-      email: payload.email,
-      country: payload.country,
-      language: payload.language,
-      origin: payload.origin,
-      destination: payload.destination,
-      travelDate: payload.travel_date,
-      travelTime: payload.travel_time,
-      flightCode: payload.flight_code,
-      adults: payload.adults,
-      children: payload.children,
-      infants: payload.infants,
-      vehicleCategory: payload.vehicle_category,
-      vehicleName: payload.vehicle_name,
-      assignedVehicle: payload.assigned_vehicle,
-      driverName: payload.driver_name,
-      totalAmount: payload.total_amount,
-      depositAmount: payload.deposit_amount,
-      remainingAmount: payload.remaining_amount,
-      currency: payload.currency,
-      paymentStatus: payload.payment_status as BusinessRequestRecord["paymentStatus"],
-      notes: payload.notes,
-      source: payload.source,
-      bookingStatus: payload.booking_status as BookingStatus,
-      message: payload.message,
-      status: "new",
-      createdAt: nowIso(),
-    } satisfies BusinessRequestRecord;
-
-    await upsertBusinessCustomerFromReservation(businessId, {
-      fullName: fallback.customerName,
-      email: fallback.email ?? undefined,
-      phone: fallback.phone ?? undefined,
-      country: fallback.country ?? undefined,
-      language: fallback.language ?? undefined,
-      source: fallback.source,
-      notes: fallback.notes ?? fallback.message ?? undefined,
-    });
-
-    return fallback;
+    throw new Error("Talep kaydı döndürülmedi.");
   }
 
   const record: BusinessRequestRecord = {
@@ -452,27 +526,32 @@ export async function createBusinessRequest(
     email: payload.email,
     country: payload.country,
     language: payload.language,
-    origin: payload.origin,
-    destination: payload.destination,
+    origin: (payload.from_location as string | null) ?? null,
+    destination: (payload.to_location as string | null) ?? null,
     travelDate: payload.travel_date,
     travelTime: payload.travel_time,
     flightCode: payload.flight_code,
-    adults: payload.adults,
-    children: payload.children,
-    infants: payload.infants,
+    adultCount: payload.adult_count,
+    childCount: payload.child_count,
+    babyCount: payload.baby_count,
+    adults: payload.adult_count,
+    children: payload.child_count,
+    infants: payload.baby_count,
     vehicleCategory: payload.vehicle_category,
-    vehicleName: payload.vehicle_name,
-    assignedVehicle: payload.assigned_vehicle,
-    driverName: payload.driver_name,
-    totalAmount: payload.total_amount,
-    depositAmount: payload.deposit_amount,
-    remainingAmount: payload.remaining_amount,
+    vehicleName: (payload.vehicle_name as string | null) ?? null,
+    assignedVehicle: null,
+    driverName: null,
+    pickupStatus: null,
+    operationNotes: null,
+    totalAmount: payload.total_amount as number | null,
+    depositAmount: payload.deposit_amount as number | null,
+    remainingAmount: payload.remaining_amount as number | null,
     currency: payload.currency,
     paymentStatus: payload.payment_status as BusinessRequestRecord["paymentStatus"],
     notes: payload.notes,
     source: payload.source,
     bookingStatus: payload.booking_status as BookingStatus,
-    message: payload.message,
+    message: payload.message ?? "Manuel rezervasyon",
     status: "new",
     createdAt: nowIso(),
   };
@@ -488,6 +567,16 @@ export async function createBusinessRequest(
     source: record.source,
     notes: record.notes ?? record.message ?? undefined,
   });
+  try {
+    const { syncBusinessVoucherFromRequest } = await import("./vouchers");
+    await syncBusinessVoucherFromRequest(businessId, record);
+  } catch (error) {
+    console.warn("voucher.create.failed", {
+      businessId,
+      requestId: record.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   return record;
 }
 
@@ -497,6 +586,8 @@ export async function updateBusinessRequestRecord(
   input: Partial<BusinessRequestInput> & {
     assignedVehicle?: string;
     driverName?: string;
+    pickupStatus?: string;
+    operationNotes?: string;
     bookingStatus?: string;
   },
 ) {
@@ -511,6 +602,14 @@ export async function updateBusinessRequestRecord(
 
   if (input.driverName !== undefined) {
     nextPayload.driver_name = normalizeText(input.driverName);
+  }
+
+  if (input.pickupStatus !== undefined) {
+    nextPayload.pickup_status = normalizeText(input.pickupStatus);
+  }
+
+  if (input.operationNotes !== undefined) {
+    nextPayload.operation_notes = normalizeText(input.operationNotes);
   }
 
   if (input.bookingStatus !== undefined) {
@@ -540,24 +639,38 @@ export async function updateBusinessRequestRecord(
       )}`,
       {
         method: "PATCH",
+        headers: {
+          Prefer: "return=representation",
+        },
         body: JSON.stringify(nextPayload),
       },
     );
 
     if (!response?.ok) {
-      throw new Error("Rezervasyon guncellenemedi.");
+      throw new Error("Rezervasyon güncellenemedi.");
     }
 
     const rows = (await response.json().catch(() => [])) as Array<Record<string, unknown>>;
     if (rows[0]) {
-      return mapRequest(rows[0]);
+      const updated = mapRequest(rows[0]);
+      try {
+        const { syncBusinessVoucherFromRequest } = await import("./vouchers");
+        await syncBusinessVoucherFromRequest(businessId, updated);
+      } catch (error) {
+        console.warn("voucher.update.failed", {
+          businessId,
+          requestId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return updated;
     }
 
     return null;
   }
 
   if (!existing) {
-    throw new Error("Rezervasyon bulunamadi.");
+    throw new Error("Rezervasyon bulunamadı.");
   }
 
   const next: BusinessRequestRecord = {
@@ -576,6 +689,10 @@ export async function updateBusinessRequestRecord(
     paymentStatus:
       (nextPayload.payment_status as BusinessRequestRecord["paymentStatus"] | undefined) ??
       existing.paymentStatus,
+    pickupStatus:
+      (nextPayload.pickup_status as string | null | undefined) ?? existing.pickupStatus,
+    operationNotes:
+      (nextPayload.operation_notes as string | null | undefined) ?? existing.operationNotes,
   };
 
   const current = demoRequests.get(businessId) ?? [];
@@ -583,5 +700,121 @@ export async function updateBusinessRequestRecord(
     businessId,
     current.map((entry) => (entry.id === requestId ? next : entry)),
   );
+  try {
+    const { syncBusinessVoucherFromRequest } = await import("./vouchers");
+    await syncBusinessVoucherFromRequest(businessId, next);
+  } catch (error) {
+    console.warn("voucher.update.failed", {
+      businessId,
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   return next;
+}
+
+export type ReservationRecord = BusinessRequestRecord;
+
+export type ReservationInput = BusinessRequestInput;
+
+export type ReservationUpdateInput = Partial<BusinessRequestInput> & {
+  recordId: string;
+};
+
+function normalizeReservationInput(input: ReservationInput): BusinessRequestInput {
+  return {
+    customerName: String(input.customerName ?? "").trim(),
+    phone: String(input.phone ?? "").trim() || undefined,
+    email: String(input.email ?? "").trim() || undefined,
+    country: String(input.country ?? "").trim() || undefined,
+    language: String(input.language ?? "").trim() || undefined,
+    origin: String(input.origin ?? "").trim() || undefined,
+    destination: String(input.destination ?? "").trim() || undefined,
+    travelDate: String(input.travelDate ?? "").trim() || undefined,
+    travelTime: String(input.travelTime ?? "").trim() || undefined,
+    flightCode: String(input.flightCode ?? "").trim() || undefined,
+    adultCount: Number(input.adultCount ?? input.adults ?? 0),
+    childCount: Number(input.childCount ?? input.children ?? 0),
+    babyCount: Number(input.babyCount ?? input.infants ?? 0),
+    adults: Number(input.adultCount ?? input.adults ?? 0),
+    children: Number(input.childCount ?? input.children ?? 0),
+    infants: Number(input.babyCount ?? input.infants ?? 0),
+    vehicleCategory: String(input.vehicleCategory ?? "").trim() || undefined,
+    vehicleName: String(input.vehicleName ?? "").trim() || undefined,
+    assignedVehicle: String(input.assignedVehicle ?? "").trim() || undefined,
+    driverName: String(input.driverName ?? "").trim() || undefined,
+    totalAmount: String(input.totalAmount ?? "").trim() || undefined,
+    depositAmount: String(input.depositAmount ?? "").trim() || undefined,
+    remainingAmount: String(input.remainingAmount ?? "").trim() || undefined,
+    currency: String(input.currency ?? "").trim() || undefined,
+    paymentStatus: String(input.paymentStatus ?? "").trim() || undefined,
+    notes: String(input.notes ?? "").trim() || undefined,
+    source: String(input.source ?? "").trim() || undefined,
+    bookingStatus: String(input.bookingStatus ?? "").trim() || undefined,
+    message: String(input.message ?? "").trim() || undefined,
+  };
+}
+
+export async function listReservations(businessId: string) {
+  return getBusinessRequests(businessId);
+}
+
+export async function getReservationById(
+  businessId: string,
+  reservationId: string,
+) {
+  return getBusinessRequestById(businessId, reservationId);
+}
+
+export async function createReservation(
+  businessId: string,
+  input: ReservationInput,
+) {
+  const reservationInput = normalizeReservationInput(input);
+  return await createBusinessRequest(businessId, reservationInput);
+}
+
+export async function updateReservation(
+  businessId: string,
+  input: ReservationUpdateInput,
+) {
+  const recordId = String(input.recordId ?? "").trim();
+
+  if (!recordId) {
+    throw new Error("Rezervasyon bulunamadı.");
+  }
+
+  const updated = await updateBusinessRequestRecord(businessId, recordId, {
+    assignedVehicle:
+      input.assignedVehicle === undefined
+        ? undefined
+        : String(input.assignedVehicle).trim(),
+    driverName:
+      input.driverName === undefined
+        ? undefined
+        : String(input.driverName).trim(),
+    bookingStatus:
+      input.bookingStatus === undefined
+        ? undefined
+        : String(input.bookingStatus).trim(),
+    vehicleName:
+      input.vehicleName === undefined
+        ? undefined
+        : String(input.vehicleName).trim(),
+    vehicleCategory:
+      input.vehicleCategory === undefined
+        ? undefined
+        : String(input.vehicleCategory).trim(),
+    paymentStatus:
+      input.paymentStatus === undefined
+        ? undefined
+        : String(input.paymentStatus).trim(),
+    notes: input.notes === undefined ? undefined : String(input.notes).trim(),
+  });
+
+  if (!updated) {
+    throw new Error("Rezervasyon güncellenemedi.");
+  }
+
+  return updated;
 }

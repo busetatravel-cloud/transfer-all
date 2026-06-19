@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     | null;
 
   const customerName = body?.customerName?.trim() ?? "";
-  const message = body?.message?.trim() ?? "";
+  const message = body?.message?.trim() ?? "Manuel rezervasyon";
   const businessId = body?.businessId?.trim() ?? "";
   const previewBusinessId = body?.previewBusinessId?.trim() ?? "";
 

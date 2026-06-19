@@ -21,9 +21,11 @@ import {
   type BusinessCustomerRecord,
 } from "@/lib/customers";
 import {
-  createBusinessRequest,
+  createReservation as createReservationRecord,
+  updateReservation as updateReservationRecord,
+} from "@/lib/reservation-service";
+import {
   getBusinessRequests,
-  updateBusinessRequestRecord,
   type BusinessRequestRecord,
 } from "@/lib/requests";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
@@ -305,6 +307,9 @@ const demoPanels = new Map<string, DemoPanelState>([
           travelDate: "2026-06-10",
           travelTime: "10:30",
           flightCode: "TK123",
+          adultCount: 2,
+          childCount: 1,
+          babyCount: 0,
           adults: 2,
           children: 1,
           infants: 0,
@@ -312,6 +317,8 @@ const demoPanels = new Map<string, DemoPanelState>([
           vehicleName: "VIP Van",
           assignedVehicle: "VIP Van",
           driverName: "Demo Driver",
+          pickupStatus: null,
+          operationNotes: null,
           totalAmount: 1200,
           depositAmount: 300,
           remainingAmount: 900,
@@ -568,6 +575,77 @@ export async function getBusinessPanelData(
   };
 }
 
+async function createReservation(
+  businessId: string,
+  input: Record<string, unknown>,
+) {
+  const request = await createReservationRecord(businessId, {
+    customerName: String(input.customerName ?? ""),
+    phone: String(input.phone ?? ""),
+    email: String(input.email ?? ""),
+    country: String(input.country ?? ""),
+    language: String(input.language ?? ""),
+    fromLocation: String(input.origin ?? ""),
+    toLocation: String(input.destination ?? ""),
+    date: String(input.travelDate ?? ""),
+    time: String(input.travelTime ?? ""),
+    flightCode: String(input.flightCode ?? ""),
+    adultCount: Number(input.adults ?? 0),
+    childCount: Number(input.children ?? 0),
+    babyCount: Number(input.infants ?? 0),
+    vehicleCategory: String(input.vehicleCategory ?? ""),
+    vehicle: String(input.vehicleName ?? ""),
+    total: String(input.totalAmount ?? ""),
+    deposit: String(input.depositAmount ?? ""),
+    remaining: String(input.remainingAmount ?? ""),
+    currency: String(input.currency ?? ""),
+    paymentStatus: String(input.paymentStatus ?? "Ödenmedi"),
+    note: String(input.notes ?? ""),
+    source: String(input.source ?? "manual"),
+    bookingStatus: String(input.bookingStatus ?? "Bekliyor"),
+    message: String(input.message ?? ""),
+  });
+
+  return {
+    panel: await getBusinessPanelData(businessId),
+    request,
+  };
+}
+
+async function updateReservation(
+  businessId: string,
+  input: Record<string, unknown> & { recordId?: string },
+) {
+  const recordId = String(input.recordId ?? "").trim();
+
+  if (!recordId) {
+    throw new Error("Rezervasyon bulunamadi.");
+  }
+
+  await updateReservationRecord(businessId, {
+    recordId,
+    assignedVehicle:
+      input.assignedVehicle === undefined ? undefined : String(input.assignedVehicle),
+    driverName:
+      input.driverName === undefined ? undefined : String(input.driverName),
+    pickupStatus:
+      input.pickupStatus === undefined ? undefined : String(input.pickupStatus),
+    operationNotes:
+      input.operationNotes === undefined ? undefined : String(input.operationNotes),
+    bookingStatus:
+      input.bookingStatus === undefined ? undefined : String(input.bookingStatus),
+    vehicleName:
+      input.vehicleName === undefined ? undefined : String(input.vehicleName),
+    vehicleCategory:
+      input.vehicleCategory === undefined ? undefined : String(input.vehicleCategory),
+    paymentStatus:
+      input.paymentStatus === undefined ? undefined : String(input.paymentStatus),
+    notes: input.notes === undefined ? undefined : String(input.notes),
+  });
+
+  return await getBusinessPanelData(businessId);
+}
+
 export async function updateBusinessPanelSection(
   businessId: string,
   payload: PanelUpdate,
@@ -623,77 +701,72 @@ export async function updateBusinessPanelSection(
         return await updateBusinessMediaRecord(businessId, payload);
       }
       case "reservation": {
-        const recordId = String(payload.recordId ?? "").trim();
-        const action = payload.action ?? (recordId ? "update" : "create");
-
-        if (action === "update") {
-          if (!recordId) {
-            throw new Error("Rezervasyon bulunamadi.");
-          }
-
-          await updateBusinessRequestRecord(businessId, recordId, {
+        if (payload.action === "update") {
+          const result = await updateReservation(businessId, {
+            recordId: String(payload.recordId ?? ""),
             assignedVehicle:
               payload.assignedVehicle === undefined
                 ? undefined
-                : String(payload.assignedVehicle).trim() || undefined,
+                : String(payload.assignedVehicle),
             driverName:
               payload.driverName === undefined
                 ? undefined
-                : String(payload.driverName).trim() || undefined,
+                : String(payload.driverName),
             bookingStatus:
               payload.bookingStatus === undefined
                 ? undefined
-                : String(payload.bookingStatus).trim() || undefined,
+                : String(payload.bookingStatus),
             vehicleName:
               payload.vehicleName === undefined
                 ? undefined
-                : String(payload.vehicleName).trim() || undefined,
+                : String(payload.vehicleName),
             vehicleCategory:
               payload.vehicleCategory === undefined
                 ? undefined
-                : String(payload.vehicleCategory).trim() || undefined,
+                : String(payload.vehicleCategory),
             paymentStatus:
               payload.paymentStatus === undefined
                 ? undefined
-                : String(payload.paymentStatus).trim() || undefined,
+                : String(payload.paymentStatus),
             notes:
               payload.notes === undefined
                 ? undefined
-                : String(payload.notes).trim() || undefined,
+                : String(payload.notes),
           });
 
-          return await getBusinessPanelData(businessId);
+          return result;
         }
 
-        await createBusinessRequest(businessId, {
-          customerName: String(payload.customerName ?? "").trim(),
-          phone: String(payload.phone ?? "").trim(),
-          email: String(payload.email ?? "").trim(),
-          country: String(payload.country ?? "").trim(),
-          language: String(payload.language ?? "").trim(),
-          origin: String(payload.origin ?? "").trim(),
-          destination: String(payload.destination ?? "").trim(),
-          travelDate: String(payload.travelDate ?? "").trim(),
-          travelTime: String(payload.travelTime ?? "").trim(),
-          flightCode: String(payload.flightCode ?? "").trim(),
+        const result = await createReservation(businessId, {
+          customerName: String(payload.customerName ?? ""),
+          phone: String(payload.phone ?? ""),
+          email: String(payload.email ?? ""),
+          country: String(payload.country ?? ""),
+          language: String(payload.language ?? ""),
+          origin: String(payload.origin ?? ""),
+          destination: String(payload.destination ?? ""),
+          travelDate: String(payload.travelDate ?? ""),
+          travelTime: String(payload.travelTime ?? ""),
+          flightCode: String(payload.flightCode ?? ""),
           adults: Number(payload.adults ?? 0),
           children: Number(payload.children ?? 0),
           infants: Number(payload.infants ?? 0),
-          vehicleCategory: String(payload.vehicleCategory ?? "").trim(),
-          vehicleName: String(payload.vehicleName ?? "").trim(),
-          assignedVehicle: String(payload.assignedVehicle ?? "").trim(),
-          driverName: String(payload.driverName ?? "").trim(),
-          totalAmount: String(payload.totalAmount ?? "").trim(),
-          depositAmount: String(payload.depositAmount ?? "").trim(),
-          remainingAmount: String(payload.remainingAmount ?? "").trim(),
-          currency: String(payload.currency ?? "").trim(),
-          paymentStatus: String(payload.paymentStatus ?? "Ödenmedi").trim(),
-          notes: String(payload.notes ?? "").trim(),
-          source: String(payload.source ?? "manual").trim() || "manual",
-          bookingStatus: String(payload.bookingStatus ?? "Bekliyor").trim(),
-          message: String(payload.message ?? "").trim(),
+          vehicleCategory: String(payload.vehicleCategory ?? ""),
+          vehicleName: String(payload.vehicleName ?? ""),
+          assignedVehicle: String(payload.assignedVehicle ?? ""),
+          driverName: String(payload.driverName ?? ""),
+          totalAmount: String(payload.totalAmount ?? ""),
+          depositAmount: String(payload.depositAmount ?? ""),
+          remainingAmount: String(payload.remainingAmount ?? ""),
+          currency: String(payload.currency ?? ""),
+          paymentStatus: String(payload.paymentStatus ?? "Ödenmedi"),
+          notes: String(payload.notes ?? ""),
+          source: String(payload.source ?? "manual"),
+          bookingStatus: String(payload.bookingStatus ?? "Bekliyor"),
+          message: String(payload.message ?? ""),
         });
-        return await getBusinessPanelData(businessId);
+
+        return result.panel;
       }
       case "customer": {
         const recordId = String(payload.recordId ?? "").trim();
@@ -900,63 +973,70 @@ export async function updateBusinessPanelSection(
       return await updateBusinessMediaRecord(businessId, payload);
     }
     case "reservation": {
-      const recordId = String(payload.recordId ?? "").trim();
-      const action = payload.action ?? (recordId ? "update" : "create");
-
-      if (action === "update") {
-        if (!recordId) {
-          throw new Error("Rezervasyon bulunamadi.");
-        }
-
-        await updateBusinessRequestRecord(businessId, recordId, {
-          assignedVehicle: String(payload.assignedVehicle ?? "").trim(),
-          driverName: String(payload.driverName ?? "").trim(),
-          bookingStatus: String(payload.bookingStatus ?? "Bekliyor").trim(),
-          vehicleName: String(payload.vehicleName ?? "").trim(),
-          vehicleCategory: String(payload.vehicleCategory ?? "").trim(),
-          notes: String(payload.notes ?? "").trim(),
+      if (payload.action === "update") {
+        return await updateReservation(businessId, {
+          recordId: String(payload.recordId ?? ""),
+          assignedVehicle:
+            payload.assignedVehicle === undefined
+              ? undefined
+              : String(payload.assignedVehicle),
+          driverName:
+            payload.driverName === undefined
+              ? undefined
+              : String(payload.driverName),
+          bookingStatus:
+            payload.bookingStatus === undefined
+              ? undefined
+              : String(payload.bookingStatus),
+          vehicleName:
+            payload.vehicleName === undefined
+              ? undefined
+              : String(payload.vehicleName),
+          vehicleCategory:
+            payload.vehicleCategory === undefined
+              ? undefined
+              : String(payload.vehicleCategory),
+          paymentStatus:
+            payload.paymentStatus === undefined
+              ? undefined
+              : String(payload.paymentStatus),
+          notes:
+            payload.notes === undefined
+              ? undefined
+              : String(payload.notes),
         });
-
-        return await getBusinessPanelData(businessId);
       }
 
-      await createBusinessRequest(businessId, {
-        customerName: String(payload.customerName ?? "").trim(),
-        phone: String(payload.phone ?? "").trim(),
-        email: String(payload.email ?? "").trim(),
-        country: String(payload.country ?? "").trim(),
-        language: String(payload.language ?? "").trim(),
-        origin: String(payload.origin ?? "").trim(),
-        destination: String(payload.destination ?? "").trim(),
-        travelDate: String(payload.travelDate ?? "").trim(),
-        travelTime: String(payload.travelTime ?? "").trim(),
-        flightCode: String(payload.flightCode ?? "").trim(),
+      const result = await createReservation(businessId, {
+        customerName: String(payload.customerName ?? ""),
+        phone: String(payload.phone ?? ""),
+        email: String(payload.email ?? ""),
+        country: String(payload.country ?? ""),
+        language: String(payload.language ?? ""),
+        origin: String(payload.origin ?? ""),
+        destination: String(payload.destination ?? ""),
+        travelDate: String(payload.travelDate ?? ""),
+        travelTime: String(payload.travelTime ?? ""),
+        flightCode: String(payload.flightCode ?? ""),
         adults: Number(payload.adults ?? 0),
         children: Number(payload.children ?? 0),
         infants: Number(payload.infants ?? 0),
-        vehicleCategory: String(payload.vehicleCategory ?? "").trim(),
-        vehicleName: String(payload.vehicleName ?? "").trim(),
-        totalAmount: String(payload.totalAmount ?? "").trim(),
-        depositAmount: String(payload.depositAmount ?? "").trim(),
-        remainingAmount: String(payload.remainingAmount ?? "").trim(),
-        currency: String(payload.currency ?? "").trim(),
-        notes: String(payload.notes ?? "").trim(),
-        source: String(payload.source ?? "manual").trim() || "manual",
-        bookingStatus: String(payload.bookingStatus ?? "Bekliyor").trim(),
-        message: String(payload.message ?? "").trim(),
-        assignedVehicle: String(payload.assignedVehicle ?? "").trim(),
-        driverName: String(payload.driverName ?? "").trim(),
+        vehicleCategory: String(payload.vehicleCategory ?? ""),
+        vehicleName: String(payload.vehicleName ?? ""),
+        assignedVehicle: String(payload.assignedVehicle ?? ""),
+        driverName: String(payload.driverName ?? ""),
+        totalAmount: String(payload.totalAmount ?? ""),
+        depositAmount: String(payload.depositAmount ?? ""),
+        remainingAmount: String(payload.remainingAmount ?? ""),
+        currency: String(payload.currency ?? ""),
+        paymentStatus: String(payload.paymentStatus ?? "Ödenmedi"),
+        notes: String(payload.notes ?? ""),
+        source: String(payload.source ?? "manual"),
+        bookingStatus: String(payload.bookingStatus ?? "Bekliyor"),
+        message: String(payload.message ?? ""),
       });
-      await upsertBusinessCustomerFromReservation(businessId, {
-        fullName: String(payload.customerName ?? "").trim(),
-        email: String(payload.email ?? "").trim() || undefined,
-        phone: String(payload.phone ?? "").trim() || undefined,
-        country: String(payload.country ?? "").trim() || undefined,
-        language: String(payload.language ?? "").trim() || undefined,
-        source: String(payload.source ?? "manual").trim() || "manual",
-        notes: String(payload.notes ?? "").trim() || undefined,
-      });
-      return await getBusinessPanelData(businessId);
+
+      return result.panel;
     }
     case "customer": {
       const recordId = String(payload.recordId ?? "").trim();

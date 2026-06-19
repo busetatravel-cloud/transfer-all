@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-img-element */
+﻿/* eslint-disable @next/next/no-img-element */
 
 "use client";
 
@@ -76,15 +76,15 @@ const MEDIA_SLOT_FIELDS: Array<{
   description: string;
 }> = [
   { kind: "logo", label: "Logo", description: "Marka logosu ve kurumsal kimlik." },
-  { kind: "hero", label: "Hero", description: "Ana sayfa kapak görseli." },
-  { kind: "service_cover", label: "Hizmet", description: "Hizmet kapak görseli." },
-  { kind: "vehicle_cover", label: "Araç kapak", description: "Araç listesi için kapak." },
-  { kind: "vehicle_interior", label: "İç görünüm", description: "Araç iç fotoğrafı." },
-  { kind: "vehicle_exterior", label: "Dış görünüm", description: "Araç dış fotoğrafı." },
-  { kind: "vehicle_trunk", label: "Bagaj", description: "Bagaj fotoğrafı." },
-  { kind: "vehicle_seat", label: "Koltuk", description: "Koltuk düzeni." },
-  { kind: "route_cover", label: "Rota", description: "Rota kapak görseli." },
-  { kind: "blog_cover", label: "Blog", description: "Blog kapak görseli." },
+  { kind: "hero", label: "Hero", description: "Ana sayfa kapak gÃ¶rseli." },
+  { kind: "service_cover", label: "Hizmet", description: "Hizmet kapak gÃ¶rseli." },
+  { kind: "vehicle_cover", label: "AraÃ§ kapak", description: "AraÃ§ listesi iÃ§in kapak." },
+  { kind: "vehicle_interior", label: "Ä°Ã§ gÃ¶rÃ¼nÃ¼m", description: "AraÃ§ iÃ§ fotoÄŸrafÄ±." },
+  { kind: "vehicle_exterior", label: "DÄ±ÅŸ gÃ¶rÃ¼nÃ¼m", description: "AraÃ§ dÄ±ÅŸ fotoÄŸrafÄ±." },
+  { kind: "vehicle_trunk", label: "Bagaj", description: "Bagaj fotoÄŸrafÄ±." },
+  { kind: "vehicle_seat", label: "Koltuk", description: "Koltuk dÃ¼zeni." },
+  { kind: "route_cover", label: "Rota", description: "Rota kapak gÃ¶rseli." },
+  { kind: "blog_cover", label: "Blog", description: "Blog kapak gÃ¶rseli." },
 ];
 
 const BOOKING_STATUS_OPTIONS = [
@@ -93,16 +93,22 @@ const BOOKING_STATUS_OPTIONS = [
   "Şoför Atandı",
   "Tamamlandı",
   "İptal",
-];
+] as const;
 
-function formatBookingStatusLabel(value: string | null | undefined) {
+const OPERATION_STATUS_OPTIONS = ["Onaylandı", "Şoför Atandı"] as const;
+
+function formatPanelBookingStatusLabel(value: string | null | undefined) {
   const normalized = String(value ?? "").trim();
 
   if (!normalized) {
     return "Bekliyor";
   }
 
-  if (BOOKING_STATUS_OPTIONS.includes(normalized)) {
+  if (
+    BOOKING_STATUS_OPTIONS.includes(
+      normalized as (typeof BOOKING_STATUS_OPTIONS)[number],
+    )
+  ) {
     return normalized;
   }
 
@@ -119,6 +125,66 @@ function formatBookingStatusLabel(value: string | null | undefined) {
 type OperationFilter = "today" | "tomorrow" | "week" | "future";
 
 type OperationView = BusinessPanelData["requests"][number];
+
+function formatPanelErrorDetailed(
+  body:
+    | {
+        error?: string;
+        message?: string;
+        fieldErrors?: Record<string, string>;
+        code?: string;
+      }
+    | null,
+) {
+  if (!body) {
+    return "Kaydetme basarisiz.";
+  }
+
+  const code = body.code ? ` [${body.code}]` : "";
+  const fieldErrors = body.fieldErrors
+    ? `\n${JSON.stringify(body.fieldErrors, null, 2)}`
+    : "";
+
+  if (body.error === "validation_error") {
+    const labels = Object.keys(body.fieldErrors ?? {})
+      .map((key) => RESERVATION_FIELD_LABELS[key] ?? key)
+      .filter(Boolean);
+    const suffix = labels.length ? `: ${labels.join(", ")}` : "";
+    return `${body.message ?? "Lutfen zorunlu alanlari doldurun."}${code}${suffix}${fieldErrors}`;
+  }
+
+  return `${body.message ?? body.error ?? "Kaydetme basarisiz."}${code}${fieldErrors}`;
+}
+
+async function readErrorResponse(response: Response) {
+  const rawText = await response.text().catch(() => "");
+
+  if (!rawText.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawText) as
+      | {
+          error?: string;
+          message?: string;
+          fieldErrors?: Record<string, string>;
+          code?: string;
+          stack?: string | null;
+        }
+      | string;
+  } catch {
+    return rawText;
+  }
+}
+
+const RESERVATION_FIELD_LABELS: Record<string, string> = {
+  customerName: "MÃ¼ÅŸteri adÄ±",
+  origin: "Nereden",
+  destination: "Nereye",
+  travelDate: "Tarih",
+  travelTime: "Saat",
+};
 
 function toDateKey(date: Date) {
   const year = date.getFullYear();
@@ -176,8 +242,12 @@ function buildOperationSummary(operations: OperationView[], todayKey: string) {
   return {
     today: todayOperations.length,
     assigned: todayOperations.filter((item) => item.assignedVehicle || item.driverName).length,
-    waiting: todayOperations.filter((item) => item.bookingStatus === "Bekliyor").length,
-    completed: todayOperations.filter((item) => item.bookingStatus === "Tamamlandı").length,
+    waiting: todayOperations.filter(
+      (item) => formatPanelBookingStatusLabel(item.bookingStatus) === BOOKING_STATUS_OPTIONS[0],
+    ).length,
+    completed: todayOperations.filter(
+      (item) => formatPanelBookingStatusLabel(item.bookingStatus) === BOOKING_STATUS_OPTIONS[3],
+    ).length,
   };
 }
 
@@ -213,9 +283,9 @@ function buildCustomerViews(panel: BusinessPanelData) {
 
     const history = matchedRequests.map((request) => ({
       id: request.id,
-      label: `${request.travelDate ?? "-"} ${request.origin ?? "-"} → ${request.destination ?? "-"}`,
+      label: `${request.travelDate ?? "-"} ${request.origin ?? "-"} â†’ ${request.destination ?? "-"}`,
       amount: Number(request.totalAmount ?? 0),
-      status: formatBookingStatusLabel(request.bookingStatus),
+      status: formatPanelBookingStatusLabel(request.bookingStatus),
     }));
 
     return {
@@ -242,6 +312,10 @@ function toMoney(value: number | null | undefined) {
 }
 
 function buildFinanceSummary(operations: OperationView[]) {
+  const depositCollectedStatus = PAYMENT_STATUS_OPTIONS[1];
+  const paidStatus = PAYMENT_STATUS_OPTIONS[2];
+  const vehicleStatus = PAYMENT_STATUS_OPTIONS[3];
+
   return operations.reduce<FinanceSummary>(
     (summary, request) => {
       const total = toMoney(request.totalAmount);
@@ -251,15 +325,15 @@ function buildFinanceSummary(operations: OperationView[]) {
 
       summary.totalTurnover += total;
 
-      if (paymentStatus === "Kapora Alındı") {
+      if (paymentStatus === depositCollectedStatus) {
         summary.depositCollected += deposit || total;
       }
 
-      if (paymentStatus === "Ödendi") {
+      if (paymentStatus === paidStatus) {
         summary.remainingCollection += remaining || Math.max(total - deposit, 0);
       }
 
-      if (paymentStatus === "Araçta Tahsil") {
+      if (paymentStatus === vehicleStatus) {
         summary.collectedInVehicle += remaining || total;
       }
 
@@ -288,8 +362,17 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
   const previewUrl = panel.business?.domain ? `https://${panel.business.domain}` : null;
   const todayKey = toDateKey(new Date());
   const operations = panel.requests.slice().sort(compareOperations);
-  const filteredOperations = filterOperations(operations, operationFilter, todayKey);
-  const operationSummary = buildOperationSummary(operations, todayKey);
+  const operationCandidates = operations.filter((request) =>
+    OPERATION_STATUS_OPTIONS.includes(formatPanelBookingStatusLabel(request.bookingStatus) as
+      | "Onaylandı"
+      | "Şoför Atandı"),
+  );
+  const filteredOperations = filterOperations(
+    operationCandidates,
+    operationFilter,
+    todayKey,
+  );
+  const operationSummary = buildOperationSummary(operationCandidates, todayKey);
   const customerViews = buildCustomerViews(panel).sort(
     (left, right) => right.updatedAt.localeCompare(left.updatedAt),
   );
@@ -311,20 +394,98 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
       });
 
       if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
+        const body = await readErrorResponse(response);
 
         setState({
           status: "error",
-          message: body?.error ?? "Kaydetme basarisiz.",
+          message:
+            typeof body === "string"
+              ? body
+              : formatPanelErrorDetailed(
+                  body as
+                    | {
+                        error?: string;
+                        message?: string;
+                        fieldErrors?: Record<string, string>;
+                        code?: string;
+                      }
+                    | null,
+                ),
         });
         return false;
       }
-    } catch {
+    } catch (error) {
       setState({
         status: "error",
-        message: "Baglanti kurulamadı. Lütfen tekrar deneyin.",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Baglanti kurulamadi. Lutfen tekrar deneyin.",
+      });
+      return false;
+    }
+
+    setState({
+      status: "saved",
+      message: successMessage,
+    });
+
+    startTransition(() => {
+      router.refresh();
+    });
+
+    return true;
+  }
+
+  async function updateReservationQuick(
+    reservationId: string,
+    payload: Record<string, unknown>,
+    successMessage: string,
+  ) {
+    setState({ status: "saving", message: "Kaydediliyor..." });
+
+    try {
+      const response = await fetch(`/api/business/reservations/${reservationId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          action: "update",
+          section: "reservation",
+          payload,
+        }),
+      });
+
+      const body = await readErrorResponse(response);
+
+      if (!response.ok) {
+        setState({
+          status: "error",
+          message:
+            typeof body === "string"
+              ? body
+              : formatPanelErrorDetailed(
+                  body as
+                    | {
+                        error?: string;
+                        message?: string;
+                        fieldErrors?: Record<string, string>;
+                        code?: string;
+                      }
+                    | null,
+                ),
+        });
+        return false;
+      }
+    } catch (error) {
+      setState({
+        status: "error",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Baglanti kurulamadi. Lutfen tekrar deneyin.",
       });
       return false;
     }
@@ -424,7 +585,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
             type="button"
             onClick={openPreview}
           >
-            Ayrı sekmede aç
+            AyrÄ± sekmede aÃ§
           </button>
         </div>
         <div className={`mt-4 overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 ${previewWidthClass()} mx-auto`}>
@@ -489,7 +650,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   <OperationCard
                     key={request.id}
                     request={request}
-                    onSave={sendPayload}
+                    onSave={updateReservationQuick}
                   />
                 ))
               ) : (
@@ -503,7 +664,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
                 <div className="text-sm font-semibold text-slate-950">Pickup listesi</div>
                 <p className="mt-1 text-xs leading-6 text-slate-500">
-                  Saat, rota ve yolcu odakli kompakt gorunum.
+                  Saat, rota ve yolcu odaklı kompakt görünüm.
                 </p>
               </div>
               {filteredOperations.length ? (
@@ -522,7 +683,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                         </div>
                       </div>
                       <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {formatBookingStatusLabel(request.bookingStatus)}
+                        {formatPanelBookingStatusLabel(request.bookingStatus)}
                       </div>
                     </div>
                     <div className="grid gap-1 text-sm text-slate-600">
@@ -533,13 +694,13 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                         Yolcu: {request.adults + request.children + request.infants}
                       </div>
                       <div>Araç: {request.assignedVehicle ?? request.vehicleName ?? "-"}</div>
-                      <div>Sofor: {request.driverName ?? "-"}</div>
+                      <div>Şoför: {request.driverName ?? "-"}</div>
                     </div>
                   </article>
                 ))
               ) : (
                 <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Pickup listesi bos.
+                  Pickup listesi boş.
                 </div>
               )}
             </div>
@@ -650,6 +811,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               const ok = await sendPayload(
                 {
                   section: "domain",
+                  action: "update",
                   domain: String(body.domain ?? ""),
                 },
                 "Domain kaydedildi.",
@@ -685,8 +847,8 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
 
       <SectionCard
         className={show("media") ? "" : "hidden"}
-        title="Fotoğraf Yönetimi"
-        description="Upload entegrasyonu şimdilik güvenli placeholder olarak kalır. URL ve alt metin girerek medya alanlarını yönet."
+        title="FotoÄŸraf YÃ¶netimi"
+        description="Upload entegrasyonu ÅŸimdilik gÃ¼venli placeholder olarak kalÄ±r. URL ve alt metin girerek medya alanlarÄ±nÄ± yÃ¶net."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {MEDIA_SLOT_FIELDS.map((slot) => (
@@ -705,173 +867,12 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
         </div>
       </SectionCard>
 
-      <SectionCard
-        className={show("reservations") ? "" : "hidden"}
-        title="Rezervasyonlar"
-        description="Web sitesinden gelen talepler ve manuel rezervasyonlar aynı businessId altında listelenir."
-      >
-        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-          <form
-            className="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              const form = event.currentTarget;
-              const formData = new FormData(form);
-              const body = Object.fromEntries(formData.entries());
-              const ok = await sendPayload(
-                {
-                  section: "reservation",
-                  action: "create",
-                  customerName: String(body.customerName ?? ""),
-                  phone: String(body.phone ?? ""),
-                  email: String(body.email ?? ""),
-                  country: String(body.country ?? ""),
-                  language: String(body.language ?? ""),
-                  origin: String(body.origin ?? ""),
-                  destination: String(body.destination ?? ""),
-                  travelDate: String(body.travelDate ?? ""),
-                  travelTime: String(body.travelTime ?? ""),
-                  flightCode: String(body.flightCode ?? ""),
-                  adults: Number(body.adults ?? 0),
-                  children: Number(body.children ?? 0),
-                  infants: Number(body.infants ?? 0),
-                  vehicleCategory: String(body.vehicleCategory ?? ""),
-                  vehicleName: String(body.vehicleName ?? ""),
-                  totalAmount: String(body.totalAmount ?? ""),
-                  depositAmount: String(body.depositAmount ?? ""),
-                  remainingAmount: String(body.remainingAmount ?? ""),
-                  currency: String(body.currency ?? "TRY"),
-                  paymentStatus: String(body.paymentStatus ?? "Ödenmedi"),
-                  notes: String(body.notes ?? ""),
-                  source: "manual",
-                  bookingStatus: String(body.bookingStatus ?? "Bekliyor"),
-                  message: String(body.notes ?? "Manuel rezervasyon kaydı"),
-                },
-                "Rezervasyon kaydedildi.",
-              );
-
-              if (ok) {
-                form.reset();
-              }
-            }}
-          >
-            <input type="hidden" name="section" value="reservation" />
-            <input type="hidden" name="action" value="create" />
-            <input type="hidden" name="source" value="manual" />
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field name="customerName" label="Müşteri ad soyad" />
-              <Field name="phone" label="Telefon" />
-              <Field name="email" label="Mail" type="email" />
-              <Field name="country" label="Ülke" />
-              <Field name="language" label="Dil" />
-              <Field name="origin" label="Nereden" />
-              <Field name="destination" label="Nereye" />
-              <Field name="travelDate" label="Tarih" type="date" />
-              <Field name="travelTime" label="Saat" type="time" />
-              <Field name="flightCode" label="Uçuş kodu" />
-              <Field name="adults" label="Yetişkin" type="number" defaultValue="1" />
-              <Field name="children" label="Çocuk" type="number" defaultValue="0" />
-              <Field name="infants" label="Bebek" type="number" defaultValue="0" />
-              <Field name="vehicleCategory" label="Araç kategorisi" />
-              <Field name="vehicleName" label="Araç" />
-              <Field name="totalAmount" label="Toplam" type="number" />
-              <Field name="depositAmount" label="Kapora" type="number" />
-              <Field name="remainingAmount" label="Kalan" type="number" />
-              <SelectField
-                label="Para birimi"
-                name="currency"
-                defaultValue="TRY"
-                options={["TRY", "EUR", "USD", "GBP", "AED"]}
-              />
-            </div>
-            <TextArea name="notes" label="Not" placeholder="Ek açıklama" />
-            <SelectField
-              label="Ödeme durumu"
-              name="paymentStatus"
-              defaultValue="Ödenmedi"
-              options={[...PAYMENT_STATUS_OPTIONS]}
-            />
-            <SelectField
-              label="Durum"
-              name="bookingStatus"
-              defaultValue="Bekliyor"
-              options={BOOKING_STATUS_OPTIONS}
-            />
-            <button
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-              disabled={isPending}
-              type="submit"
-            >
-              Manuel rezervasyon oluştur
-            </button>
-          </form>
-
-          <div className="grid gap-3">
-            {panel.requests.length ? (
-              panel.requests.map((request) => (
-                <article
-                  key={request.id}
-                  className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="grid gap-1">
-                      <div className="font-semibold text-slate-950">
-                        {request.customerName}
-                      </div>
-                      <div className="text-xs uppercase tracking-[0.24em] text-slate-500">
-                        {request.source === "manual" ? "Manuel" : "Web"} /{" "}
-                        {formatBookingStatusLabel(request.bookingStatus)}
-                      </div>
-                    </div>
-                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {request.currency ?? "TRY"}
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 text-sm text-slate-600">
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      <span>{request.phone ?? "-"}</span>
-                      <span>{request.email ?? "-"}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      <span>
-                        {request.origin ?? "-"} → {request.destination ?? "-"}
-                      </span>
-                      <span>
-                        {request.travelDate ?? "-"} {request.travelTime ?? ""}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      <span>
-                        {request.adults} yetişkin, {request.children} çocuk, {request.infants} bebek
-                      </span>
-                      <span>{request.vehicleCategory ?? "-"}</span>
-                      <span>{request.vehicleName ?? "-"}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      <span>Toplam: {request.totalAmount ?? 0}</span>
-                      <span>Kapora: {request.depositAmount ?? 0}</span>
-                      <span>Kalan: {request.remainingAmount ?? 0}</span>
-                      <span>Durum: {formatPaymentStatusLabel(request.paymentStatus)}</span>
-                    </div>
-                    {request.flightCode ? <div>Uçuş: {request.flightCode}</div> : null}
-                    {request.notes ? <div>Not: {request.notes}</div> : null}
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                Henüz rezervasyon yok.
-              </div>
-            )}
-          </div>
-        </div>
-      </SectionCard>
+      {/* Reservations module moved to /app/reservations */}
 
       <SectionCard
         className={show("customers") ? "" : "hidden"}
-        title="Müşteriler / CRM"
-        description="Rezervasyonlardan otomatik müşteri kartı oluşur. Aynı telefon veya email mevcut müşteriyle eşleşir."
+        title="MÃ¼ÅŸteriler / CRM"
+        description="Rezervasyonlardan otomatik mÃ¼ÅŸteri kartÄ± oluÅŸur. AynÄ± telefon veya email mevcut mÃ¼ÅŸteriyle eÅŸleÅŸir."
       >
         <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <form
@@ -893,7 +894,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   notes: String(body.notes ?? ""),
                   source: "manual",
                 },
-                "Musteri kaydedildi.",
+                "MÃ¼ÅŸteri oluÅŸturuldu.",
               );
 
               if (ok) {
@@ -908,16 +909,16 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               <Field name="fullName" label="Ad soyad" />
               <Field name="phone" label="Telefon" />
               <Field name="email" label="Email" type="email" />
-              <Field name="country" label="Ülke" />
+              <Field name="country" label="Ãœlke" />
               <Field name="language" label="Dil" />
             </div>
-            <TextArea name="notes" label="Not" placeholder="Müşteri notu" />
+            <TextArea name="notes" label="Not" placeholder="MÃ¼ÅŸteri notu" />
             <button
               className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
               disabled={isPending}
               type="submit"
             >
-              Müşteri oluştur
+              MÃ¼ÅŸteri oluÅŸtur
             </button>
           </form>
 
@@ -948,7 +949,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                   </div>
 
                   <div className="grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-sm font-semibold text-slate-900">Rezervasyon geçmişi</div>
+                    <div className="text-sm font-semibold text-slate-900">Rezervasyon geÃ§miÅŸi</div>
                     {customer.history.length ? (
                       <div className="grid gap-2 text-sm text-slate-600">
                         {customer.history.map((item) => (
@@ -959,7 +960,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-500">Henüz rezervasyon yok.</p>
+                      <p className="text-sm text-slate-500">HenÃ¼z rezervasyon yok.</p>
                     )}
                   </div>
 
@@ -981,7 +982,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                           language: String(body.language ?? customer.language ?? ""),
                           notes: String(body.notes ?? customer.notes ?? ""),
                         },
-                        "Müşteri güncellendi.",
+                        "MÃ¼ÅŸteri gÃ¼ncellendi.",
                       );
                     }}
                   >
@@ -989,7 +990,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                       <Field name="fullName" label="Ad soyad" defaultValue={customer.fullName} />
                       <Field name="phone" label="Telefon" defaultValue={customer.phone ?? ""} />
                       <Field name="email" label="Email" defaultValue={customer.email ?? ""} type="email" />
-                      <Field name="country" label="Ülke" defaultValue={customer.country ?? ""} />
+                      <Field name="country" label="Ãœlke" defaultValue={customer.country ?? ""} />
                       <Field name="language" label="Dil" defaultValue={customer.language ?? ""} />
                     </div>
                     <TextArea name="notes" label="Not" defaultValue={customer.notes} />
@@ -1004,7 +1005,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
               ))
             ) : (
               <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                Henüz müşteri kaydı yok.
+                HenÃ¼z mÃ¼ÅŸteri kaydÄ± yok.
               </div>
             )}
           </div>
@@ -1036,7 +1037,6 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
                 <FinanceCard
                   key={`finance-${request.id}`}
                   request={request}
-                  onSave={sendPayload}
                 />
               ))
             ) : (
@@ -1215,7 +1215,7 @@ export function BusinessPanelEditor({ panel, module = "dashboard" }: Props) {
 
       <SectionCard
         className={show("languages") ? "" : "hidden"}
-        title="Dil yönetimi"
+        title="Dil yÃ¶netimi"
         description="Temel dil kaydi olustur ve mevcut kaydi guncelle."
       >
         <EditableListCard
@@ -1523,7 +1523,7 @@ function MediaSlotCard({
       >
         <input type="hidden" name="sortOrder" value="0" />
         <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Görsel URL</span>
+          <span className="text-sm font-medium text-slate-700">GÃ¶rsel URL</span>
           <input
             className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
             defaultValue={sourceUrl}
@@ -1731,10 +1731,19 @@ function OperationCard({
 }: {
   request: OperationView;
   onSave: (
-    payload: Record<string, string | boolean | number | undefined>,
+    reservationId: string,
+    payload: Record<string, unknown>,
     successMessage: string,
   ) => Promise<boolean>;
 }) {
+  const [draft, setDraft] = useState({
+    assignedVehicle: request.assignedVehicle ?? "",
+    driverName: request.driverName ?? "",
+    pickupStatus: request.pickupStatus ?? "",
+    operationNotes: request.operationNotes ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+
   return (
     <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -1745,91 +1754,77 @@ function OperationCard({
           </div>
         </div>
         <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-          {formatBookingStatusLabel(request.bookingStatus)}
+          {formatPanelBookingStatusLabel(request.bookingStatus)}
         </div>
       </div>
 
       <div className="grid gap-2 text-sm text-slate-600">
         <div>{request.phone ?? "-"}</div>
         <div>
-          {request.origin ?? "-"} &rarr; {request.destination ?? "-"}
+          {request.origin ?? "-"} → {request.destination ?? "-"}
         </div>
-        <div>
-          Yolcu: {request.adults + request.children + request.infants}
-        </div>
+        <div>Yolcu: {request.adults + request.children + request.infants}</div>
         <div>Not: {request.notes ?? "-"}</div>
       </div>
 
-      <form
-        className="grid gap-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          const formData = new FormData(event.currentTarget);
-          const body = Object.fromEntries(formData.entries());
-          await onSave(
-            {
-              section: "reservation",
-              action: "update",
-              recordId: request.id,
-              assignedVehicle: String(body.assignedVehicle ?? ""),
-              driverName: String(body.driverName ?? ""),
-              bookingStatus: String(body.bookingStatus ?? request.bookingStatus),
-              paymentStatus: String(body.paymentStatus ?? request.paymentStatus),
-              vehicleName: String(body.vehicleName ?? request.vehicleName ?? ""),
-              vehicleCategory: String(body.vehicleCategory ?? request.vehicleCategory ?? ""),
-              notes: String(body.notes ?? request.notes ?? ""),
-            },
-            "Operasyon guncellendi.",
-          );
-        }}
-      >
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field
-            name="assignedVehicle"
-            label="Araç atama"
-            defaultValue={request.assignedVehicle ?? request.vehicleName ?? ""}
-            placeholder="VIP Van"
-          />
-          <Field
-            name="driverName"
-            label="Şoför atama"
-            defaultValue={request.driverName ?? ""}
-            placeholder="Şoför adı"
-          />
-        </div>
-        <SelectField
-          label="Durum"
-          name="bookingStatus"
-          defaultValue={request.bookingStatus}
-          options={BOOKING_STATUS_OPTIONS}
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field
+          label="Atanan araç"
+          name={`assignedVehicle-${request.id}`}
+          value={draft.assignedVehicle}
+          onChange={(value) => setDraft((current) => ({ ...current, assignedVehicle: value }))}
         />
-        <SelectField
-          label="Ödeme durumu"
-          name="paymentStatus"
-          defaultValue={request.paymentStatus}
-          options={[...PAYMENT_STATUS_OPTIONS]}
+        <Field
+          label="Şoför"
+          name={`driverName-${request.id}`}
+          value={draft.driverName}
+          onChange={(value) => setDraft((current) => ({ ...current, driverName: value }))}
         />
-        <TextArea name="notes" label="Not" defaultValue={request.notes ?? ""} />
+        <TextArea
+          label="Pickup notu"
+          name={`pickupStatus-${request.id}`}
+          value={draft.pickupStatus}
+          onChange={(value) => setDraft((current) => ({ ...current, pickupStatus: value }))}
+        />
+        <TextArea
+          label="Operasyon notu"
+          name={`operationNotes-${request.id}`}
+          value={draft.operationNotes}
+          onChange={(value) => setDraft((current) => ({ ...current, operationNotes: value }))}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         <button
           className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-          type="submit"
+          disabled={saving}
+          type="button"
+          onClick={async () => {
+            setSaving(true);
+            await onSave(
+              request.id,
+              {
+                assignedVehicle: draft.assignedVehicle,
+                driverName: draft.driverName,
+                pickupStatus: draft.pickupStatus,
+                operationNotes: draft.operationNotes,
+              },
+              "Operasyon kaydedildi.",
+            );
+            setSaving(false);
+          }}
         >
-          Atamayı kaydet
+          Kaydet
         </button>
-      </form>
+      </div>
     </article>
   );
 }
 
 function FinanceCard({
   request,
-  onSave,
 }: {
   request: OperationView;
-  onSave: (
-    payload: Record<string, string | boolean | number | undefined>,
-    successMessage: string,
-  ) => Promise<boolean>;
 }) {
   return (
     <article className="grid gap-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -1852,36 +1847,9 @@ function FinanceCard({
         <div>Durum: {formatPaymentStatusLabel(request.paymentStatus)}</div>
       </div>
 
-      <form
-        className="grid gap-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          const formData = new FormData(event.currentTarget);
-          const body = Object.fromEntries(formData.entries());
-          await onSave(
-            {
-              section: "reservation",
-              action: "update",
-              recordId: request.id,
-              paymentStatus: String(body.paymentStatus ?? request.paymentStatus),
-            },
-            "Finans bilgisi guncellendi.",
-          );
-        }}
-      >
-        <SelectField
-          label="Ödeme durumu"
-          name="paymentStatus"
-          defaultValue={request.paymentStatus}
-          options={[...PAYMENT_STATUS_OPTIONS]}
-        />
-        <button
-          className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-          type="submit"
-        >
-          Durumu kaydet
-        </button>
-      </form>
+      <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        Finans guncelleme alanlari yeni rezervasyon modulune tasindi.
+      </div>
     </article>
   );
 }
@@ -1935,12 +1903,16 @@ function Field({
   name,
   label,
   defaultValue,
+  value,
+  onChange,
   placeholder,
   type = "text",
 }: {
   name: string;
   label: string;
   defaultValue?: string;
+  value?: string;
+  onChange?: (value: string) => void;
   placeholder?: string;
   type?: string;
 }) {
@@ -1950,9 +1922,15 @@ function Field({
       <input
         className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
         name={name}
-        defaultValue={defaultValue}
+        defaultValue={value === undefined ? defaultValue : undefined}
         placeholder={placeholder}
         type={type}
+        value={value}
+        onChange={
+          onChange
+            ? (event) => onChange(event.target.value)
+            : undefined
+        }
       />
     </label>
   );
@@ -1993,11 +1971,15 @@ function TextArea({
   name,
   label,
   defaultValue,
+  value,
+  onChange,
   placeholder,
 }: {
   name: string;
   label: string;
   defaultValue?: string;
+  value?: string;
+  onChange?: (value: string) => void;
   placeholder?: string;
 }) {
   return (
@@ -2006,38 +1988,15 @@ function TextArea({
       <textarea
         className="min-h-[120px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
         name={name}
-        defaultValue={defaultValue}
+        defaultValue={value === undefined ? defaultValue : undefined}
         placeholder={placeholder}
+        value={value}
+        onChange={
+          onChange
+            ? (event) => onChange(event.target.value)
+            : undefined
+        }
       />
-    </label>
-  );
-}
-
-function SelectField({
-  name,
-  label,
-  defaultValue,
-  options,
-}: {
-  name: string;
-  label: string;
-  defaultValue?: string;
-  options: string[];
-}) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
-      <select
-        className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
-        defaultValue={defaultValue}
-        name={name}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
     </label>
   );
 }
@@ -2123,3 +2082,6 @@ function Notice({ state, pending }: { state: SaveState; pending: boolean }) {
     <div className={`rounded-[24px] border px-5 py-4 text-sm ${tone}`}>{state.message}</div>
   );
 }
+
+
+
