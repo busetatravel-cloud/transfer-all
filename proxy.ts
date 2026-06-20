@@ -53,6 +53,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.next({ request: { headers: forwardedHeaders } });
   }
 
+  if (pathname === "/login" || pathname.startsWith("/public")) {
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
+  }
+
+  if (pathname === "/api/auth/login") {
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
+  }
+
   if (pathname.startsWith("/preview/")) {
     return NextResponse.next({ request: { headers: forwardedHeaders } });
   }

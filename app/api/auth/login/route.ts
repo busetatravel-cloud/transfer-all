@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/auth-helpers-nextjs";
 import { findUserByAuthUserId, findUserByEmail } from "@/lib/business";
+import { createLoginToken } from "@/lib/auth";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/supabase-config";
+import { SESSION_COOKIE_NAME } from "@/lib/session";
 
 export async function POST(req: Request) {
   try {
@@ -69,12 +72,30 @@ export async function POST(req: Request) {
       );
     }
 
-    return Response.json({
+    const response = NextResponse.json({
       ok: true,
       userId: authUserId,
       role: userRecord.role,
       businessId: userRecord.businessId,
     });
+
+    const sessionToken = createLoginToken({
+      userId: userRecord.id,
+      role: userRecord.role,
+      businessId: userRecord.businessId,
+      email: userRecord.email,
+    });
+
+    response.cookies.set(SESSION_COOKIE_NAME, sessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    response.headers.set("Cache-Control", "no-store");
+
+    return response;
   } catch (error) {
     return Response.json(
       {
