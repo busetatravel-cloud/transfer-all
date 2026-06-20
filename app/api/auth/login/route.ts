@@ -3,64 +3,42 @@ import { authenticate, createLoginToken } from "@/lib/auth";
 import { getLandingPath } from "@/lib/platform";
 import { SESSION_COOKIE_NAME } from "@/lib/session";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    let body: { email?: string; password?: string } | null = null;
+    let body: { email?: string; password?: string };
 
     try {
-      body = (await request.json()) as { email?: string; password?: string };
-    } catch {
+      body = (await req.json()) as { email?: string; password?: string };
+    } catch (error) {
       return Response.json(
-        { error: "invalid_request_body" },
+        {
+          error: "invalid_request_body",
+          message: String(error),
+        },
         { status: 400 },
       );
     }
 
-    const email = body?.email?.trim().toLowerCase() ?? "";
-    const password = body?.password ?? "";
-    let currentStep = "entered";
-
-    console.log({
-      step: currentStep,
-      email,
-      hasPassword: Boolean(password),
-      authError: null,
-      authErrorMessage: null,
-      authUserId: null,
-      sessionExists: false,
-    });
+    const email = body.email?.trim().toLowerCase() ?? "";
+    const password = body.password ?? "";
 
     if (!email || !password) {
-      return NextResponse.json(
+      return Response.json(
         {
           ok: false,
-          currentStep: "validation_failed",
-          authError: true,
-          authMessage: "Email ve sifre gerekli.",
-          sessionCreated: false,
+          error: "missing_credentials",
         },
         { status: 400 },
       );
     }
 
     const result = await authenticate(email, password);
-    currentStep = result.currentStep;
-
-    console.log({
-      step: currentStep,
-      email,
-      hasPassword: Boolean(password),
-      authError: result.authError,
-      authErrorMessage: result.authMessage,
-      authUserId: result.authUserId,
-      sessionExists: result.sessionCreated,
-    });
 
     if (!result.ok || !result.session) {
-      return NextResponse.json(
+      return Response.json(
         {
           ok: false,
-          currentStep,
+          currentStep: result.currentStep,
           authError: true,
           authMessage: result.authMessage ?? "Giris islemi tamamlanamadi.",
           sessionCreated: false,
@@ -72,7 +50,7 @@ export async function POST(request: Request) {
     const token = createLoginToken(result.session);
     const response = NextResponse.json({
       ok: true,
-      currentStep,
+      currentStep: result.currentStep,
       authError: false,
       authMessage: null,
       sessionCreated: true,
@@ -91,7 +69,7 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     console.error("/api/auth/login error:", error);
-    return NextResponse.json(
+    return Response.json(
       {
         ok: false,
         currentStep: "exception",
