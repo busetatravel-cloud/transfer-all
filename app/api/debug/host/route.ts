@@ -2,17 +2,11 @@ import { NextResponse } from "next/server";
 import { isPlatformHost, normalizeHost } from "@/lib/platform";
 
 export async function GET(request: Request) {
-  const nextRequest = request as Request & {
-    nextUrl?: URL;
-    headers: Headers;
-  };
+  const url = new URL(request.url);
   const host = normalizeHost(
-    nextRequest.headers.get("x-forwarded-host") ??
-      nextRequest.headers.get("host") ??
-      nextRequest.nextUrl?.hostname ??
-      null,
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.hostname,
   );
-  const pathname = nextRequest.nextUrl?.pathname ?? new URL(request.url).pathname;
+  const pathname = url.pathname;
   const platformHost = isPlatformHost(host);
 
   console.info("/api/debug/host", {
@@ -25,5 +19,6 @@ export async function GET(request: Request) {
     host,
     pathname,
     isPlatformHost: platformHost,
+    headers: Object.fromEntries(request.headers.entries()),
   });
 }

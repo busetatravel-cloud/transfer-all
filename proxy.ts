@@ -49,6 +49,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.next({ request: { headers: forwardedHeaders } });
   }
 
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
+  }
+
+  if (pathname.startsWith("/preview/")) {
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
+  }
+
   const session = verifySessionToken(
     request.cookies.get(SESSION_COOKIE_NAME)?.value ?? null,
     getSessionSecret(),
@@ -93,9 +101,7 @@ export function proxy(request: NextRequest) {
   if (
     pathname === "/login" ||
     pathname.startsWith("/app") ||
-    pathname.startsWith("/super-admin") ||
-    pathname.startsWith("/api/") ||
-    pathname.startsWith("/preview/")
+    pathname.startsWith("/super-admin")
   ) {
     return redirectTo("/", request);
   }
