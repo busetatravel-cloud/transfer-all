@@ -338,11 +338,19 @@ export function DomainCenter({ business }: Props) {
             <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
               <MetaItem label="Hostname" value={business.hostname ?? business.domain ?? "-"} />
               <MetaItem label="Verification token" value={business.verificationToken ?? "-"} />
+              <MetaItem label="Provider" value={business.domainProvider === "vercel" ? "Vercel" : "Manual"} />
+              <MetaItem label="Provider status" value={business.domainProviderStatus ?? "-"} />
               <MetaItem label="Verified at" value={formatDateTime(business.verifiedAt)} />
               <MetaItem label="Activated at" value={formatDateTime(business.activatedAt)} />
               <MetaItem label="Last check" value={formatDateTime(business.lastCheckedAt)} />
               <MetaItem label="SSL status" value={sslLabel} />
             </div>
+
+            {business.domainProviderStatus === "manual" ? (
+              <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                Vercel env bulunmadığı için domain provider otomasyonu manuel modda çalışıyor.
+              </div>
+            ) : null}
 
             {activeLink ? (
               <a

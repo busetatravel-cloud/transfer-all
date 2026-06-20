@@ -10,12 +10,11 @@ import {
   PanelSection,
   PublicSiteShell,
 } from "@/components/public-site-shell";
-import { getSession } from "@/lib/auth";
 import {
   getLocalizedPublicSiteDataFromRequest,
   getPublicSiteDataByHost,
 } from "@/lib/public-site";
-import { getLandingPath, isPlatformHost, normalizeHost } from "@/lib/platform";
+import { isPlatformHost, normalizeHost } from "@/lib/platform";
 import {
   resolveBusinessMediaAltText,
   resolveBusinessMediaSourceUrl,
@@ -61,8 +60,7 @@ export default async function HomePage({
   );
 
   if (isPlatformHost(host)) {
-    const session = await getSession();
-    redirect(getLandingPath(session?.role ?? null));
+    redirect("/login");
   }
 
   const panel = await getPublicSiteDataByHost(host);

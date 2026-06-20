@@ -5,6 +5,10 @@ import {
   listBusinesses,
   updateBusinessDomainRecord,
 } from "@/lib/business";
+import {
+  removeBusinessDomainFromProvider,
+  syncBusinessDomainWithProvider,
+} from "@/lib/domain-provider";
 import { formatDomainStatusLabel } from "@/lib/domain-utils";
 
 function normalizeString(value: unknown) {
@@ -105,6 +109,60 @@ export async function PATCH(request: Request) {
       ok: true,
       business,
       message: "Domain pasif edildi.",
+      statusLabel: formatDomainStatusLabel(business.domainStatus),
+    });
+  }
+
+  if (action === "provider_add" || action === "provider_retry") {
+    const providerResult = await syncBusinessDomainWithProvider(
+      current.hostname ?? current.domain ?? "",
+    );
+
+    const business = await updateBusinessDomainRecord(businessId, {
+      domain: current.hostname ?? current.domain ?? "",
+      hostname: current.hostname ?? current.domain ?? "",
+      domainStatus:
+        providerResult.status === "provider_added"
+          ? "provider_added"
+          : current.domainStatus,
+      domainProvider: providerResult.mode,
+      domainProviderStatus: providerResult.status,
+      domainProviderMessage: providerResult.message,
+      domainProviderSyncedAt:
+        providerResult.status === "provider_added"
+          ? new Date().toISOString()
+          : current.domainProviderSyncedAt,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      business,
+      message: providerResult.message,
+      providerResult,
+      statusLabel: formatDomainStatusLabel(business.domainStatus),
+    });
+  }
+
+  if (action === "provider_remove") {
+    const providerResult = await removeBusinessDomainFromProvider(
+      current.hostname ?? current.domain ?? "",
+    );
+
+    const business = await updateBusinessDomainRecord(businessId, {
+      domain: current.hostname ?? current.domain ?? "",
+      hostname: current.hostname ?? current.domain ?? "",
+      domainStatus: current.domainStatus,
+      domainProvider: "manual",
+      domainProviderStatus: "manual",
+      domainProviderMessage: providerResult.message,
+      domainProviderSyncedAt: null,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      business,
+      message: providerResult.message,
+      providerResult,
       statusLabel: formatDomainStatusLabel(business.domainStatus),
     });
   }

@@ -9,7 +9,6 @@ import {
 } from "@/lib/session";
 
 const PUBLIC_PATHS = [
-  "/",
   "/services",
   "/vehicles",
   "/routes",
@@ -31,11 +30,23 @@ function redirectTo(pathname: string, request: NextRequest) {
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = normalizeHost(
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+    request.headers.get("x-forwarded-host") ??
+      request.headers.get("host") ??
+      request.nextUrl.hostname,
   );
+  const platformHost = isPlatformHost(host);
+  const forwardedHeaders = new Headers(request.headers);
+  forwardedHeaders.set("x-forwarded-host", host || request.nextUrl.hostname);
+  forwardedHeaders.set("x-forwarded-proto", request.nextUrl.protocol.replace(":", ""));
+
+  console.info("[proxy]", {
+    host,
+    pathname,
+    platformHost,
+  });
 
   if (isStaticAssetPath(pathname)) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
   }
 
   const session = verifySessionToken(
@@ -43,13 +54,13 @@ export function proxy(request: NextRequest) {
     getSessionSecret(),
   );
 
-  if (isPlatformHost(host)) {
+  if (platformHost) {
     if (pathname === "/") {
-      return redirectTo(getLandingPath(session?.role ?? null), request);
+      return redirectTo("/login", request);
     }
 
     if (isPublicPath(pathname)) {
-      return redirectTo(getLandingPath(session?.role ?? null), request);
+      return redirectTo("/login", request);
     }
 
     if (pathname === "/login" && session) {
@@ -76,14 +87,20 @@ export function proxy(request: NextRequest) {
       }
     }
 
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
   }
 
-  if (pathname === "/login" || pathname.startsWith("/app") || pathname.startsWith("/super-admin")) {
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/app") ||
+    pathname.startsWith("/super-admin") ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/preview/")
+  ) {
     return redirectTo("/", request);
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers: forwardedHeaders } });
 }
 
 export const config = {

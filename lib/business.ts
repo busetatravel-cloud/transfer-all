@@ -9,7 +9,9 @@ import {
 } from "@/lib/platform";
 import {
   buildDomainVerificationToken,
+  type DomainAutomationMode,
   type DomainSslStatus,
+  type DomainProviderStatus,
   type DomainStatus,
 } from "@/lib/domain-utils";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
@@ -32,6 +34,10 @@ export type BusinessRecord = {
   verifiedAt: string | null;
   activatedAt: string | null;
   lastCheckedAt: string | null;
+  domainProvider: DomainAutomationMode;
+  domainProviderStatus: DomainProviderStatus;
+  domainProviderMessage: string | null;
+  domainProviderSyncedAt: string | null;
   sslStatus: DomainSslStatus;
   domainStatus: DomainStatus;
   createdAt: string;
@@ -84,6 +90,10 @@ export type BusinessDomainUpdateInput = {
   domain?: string;
   hostname?: string;
   domainStatus?: BusinessRecord["domainStatus"];
+  domainProvider?: BusinessRecord["domainProvider"];
+  domainProviderStatus?: BusinessRecord["domainProviderStatus"];
+  domainProviderMessage?: string | null;
+  domainProviderSyncedAt?: string | null;
   verificationToken?: string | null;
   verifiedAt?: string | null;
   activatedAt?: string | null;
@@ -115,6 +125,10 @@ const demoBusinesses: BusinessRecord[] = [
     verifiedAt: "2026-06-01T00:00:00.000Z",
     activatedAt: "2026-06-01T00:00:00.000Z",
     lastCheckedAt: "2026-06-01T00:00:00.000Z",
+    domainProvider: "manual",
+    domainProviderStatus: "manual",
+    domainProviderMessage: null,
+    domainProviderSyncedAt: null,
     sslStatus: "active",
     domainStatus: "active",
     createdAt: "2026-06-01T00:00:00.000Z",
@@ -190,6 +204,10 @@ function fromSupabaseBusiness(row: Record<string, unknown>): BusinessRecord {
     verifiedAt: (row.verified_at as string | null) ?? null,
     activatedAt: (row.activated_at as string | null) ?? null,
     lastCheckedAt: (row.last_checked_at as string | null) ?? null,
+    domainProvider: ((row.domain_provider as DomainAutomationMode) ?? "manual"),
+    domainProviderStatus: ((row.provider_status as DomainProviderStatus) ?? "manual"),
+    domainProviderMessage: (row.provider_message as string | null) ?? null,
+    domainProviderSyncedAt: (row.provider_synced_at as string | null) ?? null,
     sslStatus: (row.ssl_status as DomainSslStatus) ?? "pending",
     domainStatus: (row.domain_status as DomainStatus) ?? "pending",
     createdAt: String(row.created_at ?? ""),
@@ -377,7 +395,7 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
   if (config) {
     const [businessRows, adminRows] = await Promise.all([
       readRows(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
         `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
@@ -460,7 +478,7 @@ export async function getBusinessById(id: string) {
 
   if (config) {
     const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
         id,
       )}&limit=1`,
     );
@@ -488,7 +506,7 @@ export async function getBusinessByDomain(domain: string) {
   if (config) {
     const fetchBusiness = async (field: "domain" | "hostname", value: string) => {
       const response = await supabaseFetch(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&${field}=eq.${encodeURIComponent(
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&${field}=eq.${encodeURIComponent(
           value,
         )}&limit=1`,
       );
@@ -609,6 +627,10 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
         verifiedAt: null,
         activatedAt: null,
         lastCheckedAt: normalizedDomain ? new Date().toISOString() : null,
+        domainProvider: "manual",
+        domainProviderStatus: "manual",
+        domainProviderMessage: null,
+        domainProviderSyncedAt: null,
         sslStatus: "pending",
         domainStatus: "pending",
         createdAt: new Date().toISOString(),
@@ -673,6 +695,10 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
     verifiedAt: null,
     activatedAt: null,
     lastCheckedAt: normalizedDomain ? now : null,
+    domainProvider: "manual",
+    domainProviderStatus: "manual",
+    domainProviderMessage: null,
+    domainProviderSyncedAt: null,
     sslStatus: "pending",
     domainStatus: normalizedDomain ? "pending" : "pending",
     createdAt: now,
@@ -728,6 +754,13 @@ export async function updateBusinessDomainRecord(
   const nextLastCheckedAt = input.lastCheckedAt ?? currentBusiness?.lastCheckedAt ?? null;
   const nextSslStatus = (input.sslStatus ?? currentBusiness?.sslStatus ?? "pending") as DomainSslStatus;
   const nextDomainStatus = (input.domainStatus ?? currentBusiness?.domainStatus ?? "pending") as DomainStatus;
+  const nextDomainProvider = input.domainProvider ?? currentBusiness?.domainProvider ?? "manual";
+  const nextDomainProviderStatus =
+    input.domainProviderStatus ?? currentBusiness?.domainProviderStatus ?? "manual";
+  const nextDomainProviderMessage =
+    input.domainProviderMessage ?? currentBusiness?.domainProviderMessage ?? null;
+  const nextDomainProviderSyncedAt =
+    input.domainProviderSyncedAt ?? currentBusiness?.domainProviderSyncedAt ?? null;
   const patchBody = {
     domain: normalizedDomain,
     hostname: nextHostname,
@@ -735,6 +768,10 @@ export async function updateBusinessDomainRecord(
     verified_at: normalizedDomain ? nextVerifiedAt : null,
     activated_at: normalizedDomain ? nextActivatedAt : null,
     last_checked_at: normalizedDomain ? nextLastCheckedAt : null,
+    domain_provider: normalizedDomain ? nextDomainProvider : "manual",
+    provider_status: normalizedDomain ? nextDomainProviderStatus : "manual",
+    provider_message: normalizedDomain ? nextDomainProviderMessage : null,
+    provider_synced_at: normalizedDomain ? nextDomainProviderSyncedAt : null,
     ssl_status: normalizedDomain ? nextSslStatus : "pending",
     domain_status: normalizedDomain ? nextDomainStatus : "pending",
     updated_at: new Date().toISOString(),
@@ -814,6 +851,10 @@ export async function updateBusinessDomainRecord(
   existing.verifiedAt = normalizedDomain ? nextVerifiedAt : null;
   existing.activatedAt = normalizedDomain ? nextActivatedAt : null;
   existing.lastCheckedAt = normalizedDomain ? nextLastCheckedAt : null;
+  existing.domainProvider = normalizedDomain ? nextDomainProvider : "manual";
+  existing.domainProviderStatus = normalizedDomain ? nextDomainProviderStatus : "manual";
+  existing.domainProviderMessage = normalizedDomain ? nextDomainProviderMessage : null;
+  existing.domainProviderSyncedAt = normalizedDomain ? nextDomainProviderSyncedAt : null;
   existing.sslStatus = normalizedDomain ? nextSslStatus : "pending";
   existing.domainStatus = normalizedDomain ? nextDomainStatus : "pending";
   existing.updatedAt = new Date().toISOString();
@@ -871,6 +912,10 @@ export async function updateBusinessOwnDomainRecord(
           verified_at: null,
           activated_at: null,
           last_checked_at: normalizedDomain ? new Date().toISOString() : null,
+          domain_provider: normalizedDomain ? currentBusiness?.domainProvider ?? "manual" : "manual",
+          provider_status: normalizedDomain ? currentBusiness?.domainProviderStatus ?? "manual" : "manual",
+          provider_message: normalizedDomain ? currentBusiness?.domainProviderMessage ?? null : null,
+          provider_synced_at: normalizedDomain ? currentBusiness?.domainProviderSyncedAt ?? null : null,
           ssl_status: normalizedDomain ? "pending" : "pending",
           domain_status: "pending" as BusinessRecord["domainStatus"],
           updated_at: new Date().toISOString(),
@@ -916,6 +961,10 @@ export async function updateBusinessOwnDomainRecord(
   existing.verifiedAt = null;
   existing.activatedAt = null;
   existing.lastCheckedAt = normalizedDomain ? new Date().toISOString() : null;
+  existing.domainProvider = normalizedDomain ? currentBusiness?.domainProvider ?? "manual" : "manual";
+  existing.domainProviderStatus = normalizedDomain ? currentBusiness?.domainProviderStatus ?? "manual" : "manual";
+  existing.domainProviderMessage = normalizedDomain ? currentBusiness?.domainProviderMessage ?? null : null;
+  existing.domainProviderSyncedAt = normalizedDomain ? currentBusiness?.domainProviderSyncedAt ?? null : null;
   existing.sslStatus = "pending";
   existing.domainStatus = "pending";
   existing.updatedAt = new Date().toISOString();

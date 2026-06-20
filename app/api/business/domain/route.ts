@@ -11,9 +11,15 @@ import {
 import {
   buildDomainVerificationToken,
   formatDomainStatusLabel,
-  hasProductionTargetDomain,
   type DomainStatus,
 } from "@/lib/domain-utils";
+import {
+  getDomainAutomationMode,
+  hasVercelDomainAutomation,
+  inspectBusinessDomainProvider,
+  removeBusinessDomainFromProvider,
+  syncBusinessDomainWithProvider,
+} from "@/lib/domain-provider";
 
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -51,13 +57,17 @@ function normalizeDnsTarget(value: string) {
   return value.trim().toLowerCase().replace(/\.$/, "");
 }
 
-function isWarningDomainStatus(status: DomainStatus | string | null | undefined) {
+function isProtectedDomainStatus(status: DomainStatus | string | null | undefined) {
   const normalized = String(status ?? "").trim().toLowerCase();
   return normalized === "active" || normalized === "ssl_ready" || normalized === "verified";
 }
 
 function getGuideModeMessage() {
   return "Production hedef domain/IP ayarlanmadı. Bu ekran rehber modunda çalışır.";
+}
+
+function getCurrentHostname(current: { hostname?: string | null; domain?: string | null }) {
+  return (current.hostname ?? current.domain ?? "").trim();
 }
 
 async function checkDnsForHostname(hostname: string, verificationToken: string) {
@@ -181,6 +191,7 @@ export async function PATCH(request: Request) {
     businessId,
     action,
     hostname: body?.hostname,
+    providerMode: getDomainAutomationMode(),
   });
 
   try {
@@ -196,12 +207,32 @@ export async function PATCH(request: Request) {
       const current = await getBusinessById(businessId);
       const verificationToken =
         current?.verificationToken ?? buildDomainVerificationToken();
+      const providerSync = await syncBusinessDomainWithProvider(hostname);
+
+      console.info("business.domain.provider.sync", {
+        businessId,
+        hostname,
+        providerStatus: providerSync.status,
+        providerMode: providerSync.mode,
+        domains: providerSync.domains,
+      });
+
+      const nextDomainStatus: DomainStatus =
+        providerSync.status === "provider_added"
+          ? "provider_added"
+          : providerSync.status === "failed"
+            ? "failed"
+            : "pending";
 
       const business = await updateBusinessDomainRecord(businessId, {
         domain: hostname,
         hostname,
         verificationToken,
-        domainStatus: "pending",
+        domainStatus: nextDomainStatus,
+        domainProvider: providerSync.mode,
+        domainProviderStatus: providerSync.status,
+        domainProviderMessage: providerSync.message,
+        domainProviderSyncedAt: providerSync.status === "provider_added" ? new Date().toISOString() : null,
         verifiedAt: null,
         activatedAt: null,
         lastCheckedAt: new Date().toISOString(),
@@ -222,49 +253,62 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         ok: true,
         business,
-        message: "Domain kaydedildi.",
+        message: providerSync.message,
         statusLabel: formatDomainStatusLabel(business.domainStatus),
+        providerStatus: providerSync.status,
+        providerMode: providerSync.mode,
+        warning: providerSync.status !== "provider_added",
       });
     }
 
     if (action === "check_dns" || action === "verify") {
       const current = await getBusinessById(businessId);
 
-      if (!current || !(current.hostname ?? current.domain)) {
+      if (!current || !getCurrentHostname(current)) {
         return jsonError("domain_missing", "Önce hostname kaydedin.", 400, {
           fieldErrors: { hostname: "Önce hostname kaydedin." },
         });
       }
 
-      const hostname = (current.hostname ?? current.domain ?? "").trim();
+      const hostname = getCurrentHostname(current);
       const verificationToken = current.verificationToken ?? buildDomainVerificationToken();
       const dnsCheck = await checkDnsForHostname(hostname, verificationToken);
+      const providerInspection = hasVercelDomainAutomation()
+        ? await inspectBusinessDomainProvider(hostname)
+        : { domains: [] };
+      const providerResolved = providerInspection.domains.some((item) => item.ok);
       const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
-      const preserveStatus = isWarningDomainStatus(currentStatus) ? currentStatus : null;
-      const productionTargetReady = hasProductionTargetDomain();
-      const nextStatus: DomainStatus = preserveStatus
-        ? preserveStatus
-        : productionTargetReady
-          ? dnsCheck.verified
-            ? "verified"
-            : dnsCheck.detected
-              ? "dns_detected"
-              : "pending"
+      const nextStatus: DomainStatus =
+        isProtectedDomainStatus(currentStatus)
+          ? currentStatus
           : dnsCheck.verified
             ? "verified"
             : dnsCheck.detected
               ? "dns_detected"
-              : "pending";
+              : providerResolved
+                ? "provider_added"
+                : currentStatus === "provider_added"
+                  ? "provider_added"
+                  : "pending";
 
       const business = await updateBusinessDomainRecord(businessId, {
         domain: hostname,
         hostname,
         verificationToken,
         domainStatus: nextStatus,
+        domainProvider: providerResolved ? "vercel" : current.domainProvider,
+        domainProviderStatus: providerResolved ? "provider_added" : current.domainProviderStatus,
+        domainProviderMessage: providerResolved
+          ? "Vercel domain kaydı doğrulandı."
+          : current.domainProviderMessage,
+        domainProviderSyncedAt: current.domainProviderSyncedAt,
         verifiedAt: dnsCheck.verified ? current.verifiedAt ?? new Date().toISOString() : current.verifiedAt,
         activatedAt: current.activatedAt ?? null,
         lastCheckedAt: new Date().toISOString(),
-        sslStatus: current.sslStatus === "ready" || current.sslStatus === "active" ? current.sslStatus : "checking",
+        sslStatus:
+          current.sslStatus === "ready" || current.sslStatus === "active"
+            ? current.sslStatus
+            : "checking",
       });
 
       await recordAuditLog({
@@ -288,33 +332,38 @@ export async function PATCH(request: Request) {
             : getGuideModeMessage(),
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         dnsCheck,
-        warning: !productionTargetReady,
-        guideMode: !productionTargetReady,
+        providerCheck: providerInspection,
+        warning: !hasVercelDomainAutomation(),
+        guideMode: !hasVercelDomainAutomation(),
       });
     }
 
     if (action === "check_ssl") {
       const current = await getBusinessById(businessId);
 
-      if (!current || !(current.hostname ?? current.domain)) {
+      if (!current || !getCurrentHostname(current)) {
         return jsonError("domain_missing", "Önce hostname kaydedin.", 400, {
           fieldErrors: { hostname: "Önce hostname kaydedin." },
         });
       }
 
-      const hostname = (current.hostname ?? current.domain ?? "").trim();
+      const hostname = getCurrentHostname(current);
       const sslCheck = await checkSslForHostname(hostname);
       const now = new Date().toISOString();
       const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
-      const preserveStatus = isWarningDomainStatus(currentStatus) ? currentStatus : null;
-      const productionTargetReady = hasProductionTargetDomain();
       const nextDomainStatus: DomainStatus = sslCheck.ok
         ? currentStatus === "active"
           ? "active"
-          : productionTargetReady
-            ? "ssl_ready"
-            : currentStatus
-        : preserveStatus ?? currentStatus ?? "pending";
+          : "ssl_ready"
+        : isProtectedDomainStatus(currentStatus)
+          ? currentStatus
+          : currentStatus === "provider_added"
+            ? "provider_added"
+            : currentStatus === "dns_detected"
+              ? "dns_detected"
+              : currentStatus === "verified"
+                ? "verified"
+                : "pending";
 
       const business = await updateBusinessDomainRecord(businessId, {
         domain: hostname,
@@ -324,7 +373,7 @@ export async function PATCH(request: Request) {
         verifiedAt: current.verifiedAt ?? (sslCheck.ok ? now : null),
         activatedAt: nextDomainStatus === "active" ? current.activatedAt ?? now : current.activatedAt,
         lastCheckedAt: now,
-        sslStatus: productionTargetReady && sslCheck.ok ? "ready" : "checking",
+        sslStatus: sslCheck.ok ? "ready" : current.sslStatus === "ready" || current.sslStatus === "active" ? current.sslStatus : "checking",
       });
 
       await recordAuditLog({
@@ -344,13 +393,14 @@ export async function PATCH(request: Request) {
         message: sslCheck.ok ? "SSL sertifikası hazır." : "SSL sertifikası henüz hazır değil.",
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         sslCheck,
-        warning: !productionTargetReady || !sslCheck.ok,
-        guideMode: !productionTargetReady,
+        warning: !sslCheck.ok,
+        guideMode: !hasVercelDomainAutomation(),
       });
     }
 
     if (action === "remove") {
       const current = await getBusinessById(businessId);
+      const providerRemoval = await removeBusinessDomainFromProvider(getCurrentHostname(current ?? {}));
       const business = await updateBusinessOwnDomainRecord(businessId, "");
 
       await recordAuditLog({
@@ -367,8 +417,9 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         ok: true,
         business,
-        message: "Domain kaldırıldı.",
+        message: providerRemoval.message,
         statusLabel: formatDomainStatusLabel(business.domainStatus),
+        providerRemoval,
       });
     }
 
@@ -380,7 +431,9 @@ export async function PATCH(request: Request) {
         ? 409
         : /bulunamadı|required|gerekli/i.test(message)
           ? 422
-          : 400;
+          : /provider|Vercel/i.test(message)
+            ? 502
+            : 400;
     return jsonError("domain_operation_failed", message, status);
   }
 }
