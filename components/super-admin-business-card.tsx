@@ -20,11 +20,43 @@ type FormState = {
     publicUserUpdated: boolean | null;
     errorCode: string | null;
     errorMessage: string | null;
+    currentStep: string | null;
+    stack: string | null;
   } | null;
 };
 
 type ActionTarget = "business" | "admin";
 type ActionType = "activate" | "deactivate" | "delete";
+
+type AdminResponse = {
+  ok?: boolean;
+  code?: string;
+  message?: string;
+  error?: string;
+  currentStep?: string;
+  authCreated?: boolean;
+  authUserId?: string | null;
+  publicUserUpdated?: boolean;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  stack?: string | null;
+};
+
+function toDebug(body: AdminResponse | null): FormState["debug"] {
+  if (!body) {
+    return null;
+  }
+
+  return {
+    authCreated: body.authCreated ?? null,
+    authUserId: body.authUserId ?? null,
+    publicUserUpdated: body.publicUserUpdated ?? null,
+    errorCode: body.errorCode ?? body.code ?? null,
+    errorMessage: body.errorMessage ?? body.message ?? body.error ?? null,
+    currentStep: body.currentStep ?? null,
+    stack: body.stack ?? null,
+  };
+}
 
 export function SuperAdminBusinessCard({ business }: Props) {
   const router = useRouter();
@@ -62,34 +94,37 @@ export function SuperAdminBusinessCard({ business }: Props) {
       body: JSON.stringify({ target, action }),
     });
 
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as
-        | {
-            code?: string;
-            message?: string;
-            error?: string;
-            debug?: FormState["debug"];
-          }
-        | null;
+    const body = (await response.json().catch(() => null)) as
+      | {
+          ok?: boolean;
+          code?: string;
+          message?: string;
+          error?: string;
+          currentStep?: string;
+          authCreated?: boolean;
+          authUserId?: string | null;
+          publicUserUpdated?: boolean;
+          errorCode?: string | null;
+          errorMessage?: string | null;
+          stack?: string | null;
+        }
+      | null;
 
+    if (!response.ok) {
       setState({
         code: body?.code ?? null,
         error: body?.message ?? body?.error ?? "Islem basarisiz.",
-        debug: body?.debug ?? null,
+        debug: toDebug(body),
         success: null,
       });
       return;
     }
 
-    const body = (await response.json().catch(() => null)) as
-      | { message?: string; debug?: FormState["debug"] }
-      | null;
-
     setState({
       code: null,
       error: null,
       success: body?.message ?? "Islem tamamlandi.",
-      debug: body?.debug ?? null,
+      debug: toDebug(body),
     });
 
     startTransition(() => {
@@ -106,15 +141,13 @@ export function SuperAdminBusinessCard({ business }: Props) {
       body: JSON.stringify({ adminEmail, adminPassword }),
     });
 
-    const body = (await response.json().catch(() => null)) as
-      | { code?: string; message?: string; error?: string; debug?: FormState["debug"] }
-      | null;
+    const body = (await response.json().catch(() => null)) as AdminResponse | null;
 
     if (!response.ok) {
       setState({
         code: body?.code ?? null,
         error: body?.message ?? body?.error ?? "Admin olusturulamadi.",
-        debug: body?.debug ?? null,
+        debug: toDebug(body),
         success: null,
       });
       return;
@@ -126,7 +159,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
       code: null,
       error: null,
       success: body?.message ?? "Admin olusturuldu.",
-      debug: body?.debug ?? null,
+      debug: toDebug(body),
     });
 
     startTransition(() => {
@@ -144,16 +177,14 @@ export function SuperAdminBusinessCard({ business }: Props) {
       },
     );
 
-    const body = (await response.json().catch(() => null)) as
-      | { code?: string; message?: string; error?: string; debug?: FormState["debug"] }
-      | null;
+    const body = (await response.json().catch(() => null)) as AdminResponse | null;
 
     if (!response.ok) {
       setState({
         code: body?.code ?? null,
         error: body?.message ?? body?.error ?? "Admin repair basarisiz.",
+        debug: toDebug(body),
         success: null,
-        debug: body?.debug ?? null,
       });
       return;
     }
@@ -162,7 +193,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
       code: null,
       error: null,
       success: body?.message ?? "Admin repair tamamlandi.",
-      debug: body?.debug ?? null,
+      debug: toDebug(body),
     });
 
     startTransition(() => {
@@ -290,6 +321,10 @@ export function SuperAdminBusinessCard({ business }: Props) {
             <p>publicUserUpdated: {String(state.debug.publicUserUpdated)}</p>
             <p>errorCode: {state.debug.errorCode ?? "-"}</p>
             <p>errorMessage: {state.debug.errorMessage ?? "-"}</p>
+            <p>currentStep: {state.debug.currentStep ?? "-"}</p>
+            <p className="whitespace-pre-wrap break-words">
+              stack: {state.debug.stack ?? "-"}
+            </p>
           </div>
         ) : null}
 
@@ -396,13 +431,12 @@ function ActionButton({
 
 function formatDateTime(value: string | null) {
   if (!value) {
-    return "Kayitli degil";
+    return "-";
   }
 
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) {
-    return "Kayitli degil";
+    return value;
   }
 
   return new Intl.DateTimeFormat("tr-TR", {
@@ -411,16 +445,15 @@ function formatDateTime(value: string | null) {
   }).format(date);
 }
 
-function getSubscriptionStatus(endDate: string | null) {
-  if (!endDate) {
-    return "Aktif";
+function getSubscriptionStatus(packageEnd: string | null) {
+  if (!packageEnd) {
+    return "Süresiz";
   }
 
-  const date = new Date(endDate);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Aktif";
+  const endDate = new Date(packageEnd);
+  if (Number.isNaN(endDate.getTime())) {
+    return "Bilinmiyor";
   }
 
-  return date.getTime() >= Date.now() ? "Aktif" : "Süresi doldu";
+  return endDate.getTime() >= Date.now() ? "Aktif" : "Süresi dolmuş";
 }

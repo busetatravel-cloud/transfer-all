@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { recordAuditLog } from "@/lib/audit";
 import {
   createBusinessAdminRecord,
+  BusinessAdminFlowError,
   deleteBusinessRecord,
   deleteBusinessAdminRecord,
   getBusinessById,
@@ -142,10 +143,30 @@ export async function POST(
 
   const adminEmail = body?.adminEmail?.trim() ?? "";
   const adminPassword = body?.adminPassword ?? "";
+  let currentStep = "entered";
+  let authCreated = false;
+  let authUserId: string | null = null;
+  let publicUserUpdated = false;
+
+  console.info("super-admin.businesses.admin.create.step", {
+    action: "create_admin",
+    email: adminEmail,
+    businessId: id,
+    step: currentStep,
+  });
 
   if (!adminEmail || !adminPassword) {
     return NextResponse.json(
-      { error: "Admin email ve sifre gerekli." },
+      {
+        ok: false,
+        currentStep: "validation_failed",
+        authCreated: false,
+        authUserId: null,
+        publicUserUpdated: false,
+        errorCode: "validation_failed",
+        errorMessage: "Admin email ve sifre gerekli.",
+        stack: null,
+      },
       { status: 400 },
     );
   }
@@ -158,46 +179,64 @@ export async function POST(
       serviceRoleExists: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
     });
 
-    const result = await createBusinessAdminRecord(id, adminEmail, adminPassword);
+    const result = await createBusinessAdminRecord(id, adminEmail, adminPassword, {
+      onStep: (step) => {
+        currentStep = step;
+        console.info("super-admin.businesses.admin.create.step", {
+          action: "create_admin",
+          email: adminEmail,
+          businessId: id,
+          step,
+        });
+      },
+    });
+
     const business = await getBusinessById(id);
+    authCreated = result.authCreated;
+    authUserId = result.authUserId;
+    publicUserUpdated = result.publicUserUpdated;
+    currentStep = "completed";
     revalidatePath("/super-admin");
     return NextResponse.json({
       ok: true,
+      currentStep,
+      authCreated,
+      authUserId,
+      publicUserUpdated,
+      errorCode: result.errorCode,
+      errorMessage: result.errorMessage,
+      stack: null,
       business,
-      debug: {
-        authCreated: result.authCreated,
-        authUserId: result.authUserId,
-        publicUserUpdated: result.publicUserUpdated,
-        errorCode: result.errorCode,
-        errorMessage: result.errorMessage,
-      },
     });
   } catch (error) {
-    const rawMessage =
-      error instanceof Error ? error.message : "Admin olusturulamadi.";
-    const authCreateMatch = rawMessage.match(/^AUTH_CREATE_FAILED:\s*(.*)$/i);
-    const code = authCreateMatch ? "auth_create_failed" : "admin_create_failed";
-    const message = authCreateMatch?.[1]?.trim() || rawMessage;
+    const flowError = error instanceof BusinessAdminFlowError ? error : null;
+    const stack = error instanceof Error ? error.stack ?? null : null;
+    const errorCode =
+      flowError?.code ??
+      (error instanceof Error && /^AUTH_CREATE_FAILED:/i.test(error.message)
+        ? "auth_create_failed"
+        : "admin_create_failed");
+    const errorMessage = flowError?.message ?? (error instanceof Error ? error.message : "Admin olusturulamadi.");
+    const responseStep = flowError?.currentStep ?? currentStep;
     console.error("super-admin.businesses.admin.create.failed", {
       action: "create_admin",
       email: adminEmail,
       businessId: id,
-      code,
-      message,
-      rawMessage,
+      currentStep: responseStep,
+      errorCode,
+      errorMessage,
+      stack,
     });
     return NextResponse.json(
       {
         ok: false,
-        code,
-        message,
-        debug: {
-          authCreated: false,
-          authUserId: null,
-          publicUserUpdated: false,
-          errorCode: code,
-          errorMessage: message,
-        },
+        currentStep: responseStep,
+        authCreated: flowError ? authCreated : false,
+        authUserId: flowError ? authUserId : null,
+        publicUserUpdated: flowError ? publicUserUpdated : false,
+        errorCode,
+        errorMessage,
+        stack,
       },
       { status: 400 },
     );

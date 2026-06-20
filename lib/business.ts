@@ -129,6 +129,44 @@ export type BusinessAdminCreateDebug = {
   errorMessage: string | null;
 };
 
+export type BusinessAdminCreateStep =
+  | "entered"
+  | "business_loaded"
+  | "existing_user_checked"
+  | "stale_auth_checked"
+  | "auth_create_started"
+  | "auth_create_finished"
+  | "public_user_updated"
+  | "completed";
+
+export class BusinessAdminFlowError extends Error {
+  code: string;
+
+  currentStep: BusinessAdminCreateStep;
+
+  constructor(code: string, message: string, currentStep: BusinessAdminCreateStep, stack?: string) {
+    super(message);
+    this.name = "BusinessAdminFlowError";
+    this.code = code;
+    this.currentStep = currentStep;
+    if (stack) {
+      this.stack = stack;
+    }
+  }
+}
+
+type BusinessAdminCreateOptions = {
+  onStep?: (step: BusinessAdminCreateStep) => void;
+};
+
+function raiseBusinessAdminFlowError(
+  code: string,
+  message: string,
+  currentStep: BusinessAdminCreateStep,
+): never {
+  throw new BusinessAdminFlowError(code, message, currentStep, new Error(message).stack);
+}
+
 export type SupabaseListFetchError = {
   code: string;
   message: string;
@@ -1752,12 +1790,15 @@ export async function createBusinessAdminRecord(
   businessId: string,
   email: string,
   password: string,
+  options: BusinessAdminCreateOptions = {},
 ): Promise<BusinessAdminCreateDebug> {
   const normalizedEmail = email.trim().toLowerCase();
   const nextPassword = password.trim();
+  let currentStep: BusinessAdminCreateStep = "entered";
+  options.onStep?.(currentStep);
 
   if (!normalizedEmail || !nextPassword) {
-    throw new Error("Admin email ve sifre gerekli.");
+    raiseBusinessAdminFlowError("validation_failed", "Admin email ve sifre gerekli.", currentStep);
   }
 
   const passwordHash = hashPassword(nextPassword);
@@ -1765,17 +1806,26 @@ export async function createBusinessAdminRecord(
   const config = getSupabaseConfig();
 
   if (config) {
+    currentStep = "business_loaded";
+    options.onStep?.(currentStep);
+
     const currentBusiness = await getBusinessById(businessId);
     if (!currentBusiness) {
-      throw new Error("Business bulunamadi.");
+      raiseBusinessAdminFlowError("business_not_found", "Business bulunamadi.", currentStep);
     }
 
     const existingAdmin = await readBusinessAdminRowByBusinessId(businessId);
+    currentStep = "existing_user_checked";
+    options.onStep?.(currentStep);
+
     if (existingAdmin && existingAdmin.deleted_at) {
       await deleteUserRow(String(existingAdmin.id)).catch(() => null);
     }
 
     if (existingAdmin && !existingAdmin.deleted_at) {
+      currentStep = "stale_auth_checked";
+      options.onStep?.(currentStep);
+
       const existingAuthLookup = existingAdmin.auth_user_id
         ? await getSupabaseAuthUserById(String(existingAdmin.auth_user_id))
         : null;
@@ -1811,6 +1861,12 @@ export async function createBusinessAdminRecord(
         await updateSupabaseAuthUserPassword(nextAuthUserId, nextPassword).catch(() => null);
       }
 
+      currentStep = "public_user_updated";
+      options.onStep?.(currentStep);
+
+      currentStep = "completed";
+      options.onStep?.(currentStep);
+
       return {
         authCreated: !existingAdmin.auth_user_id && Boolean(nextAuthUserId),
         authUserId: nextAuthUserId,
@@ -1819,6 +1875,9 @@ export async function createBusinessAdminRecord(
         errorMessage: null,
       };
     }
+
+    currentStep = "auth_create_started";
+    options.onStep?.(currentStep);
 
     const authResult = await createSupabaseAuthUser({
       email: normalizedEmail,
@@ -1851,10 +1910,15 @@ export async function createBusinessAdminRecord(
     }
 
     if (!authUserId) {
-      throw new Error(
-        `AUTH_CREATE_FAILED: ${authResult.errorMessage ?? "Business admin olusturulamadi."}`,
+      raiseBusinessAdminFlowError(
+        "auth_create_failed",
+        authResult.errorMessage ?? "Business admin olusturulamadi.",
+        currentStep,
       );
     }
+
+    currentStep = "auth_create_finished";
+    options.onStep?.(currentStep);
 
     try {
       await upsertUserRowById({
@@ -1873,6 +1937,12 @@ export async function createBusinessAdminRecord(
         authCreated = true;
       }
 
+      currentStep = "public_user_updated";
+      options.onStep?.(currentStep);
+
+      currentStep = "completed";
+      options.onStep?.(currentStep);
+
       return {
         authCreated,
         authUserId,
@@ -1884,7 +1954,8 @@ export async function createBusinessAdminRecord(
       if (authCreated && authUserId) {
         await deleteSupabaseAuthUser(authUserId).catch(() => null);
       }
-      throw error;
+      const message = error instanceof Error ? error.message : "Public kullanici yazilamadi.";
+      raiseBusinessAdminFlowError("public_user_update_failed", message, currentStep);
     }
   }
 
@@ -1914,6 +1985,9 @@ export async function createBusinessAdminRecord(
     createdAt: changedAt,
     updatedAt: changedAt,
   });
+
+  currentStep = "completed";
+  options.onStep?.(currentStep);
 
   return {
     authCreated: false,
