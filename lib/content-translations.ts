@@ -432,9 +432,11 @@ export async function replaceBusinessTranslationDrafts(
   );
 
   const createdAt = new Date().toISOString();
-  const inserted = await Promise.all(
-    rows.map((row) =>
-      insertRow("/business_content_translations", {
+  const inserted: Array<Record<string, unknown>> = [];
+
+  for (const row of rows) {
+    try {
+      const created = await insertRow("/business_content_translations", {
         id: randomUUID(),
         business_id: businessId,
         locale_code: normalizedLocale,
@@ -445,9 +447,45 @@ export async function replaceBusinessTranslationDrafts(
         translated_text: row.translatedText,
         created_at: createdAt,
         updated_at: createdAt,
-      }),
-    ),
-  );
+      });
+
+      if (created) {
+        inserted.push(created);
+      }
+    } catch (error) {
+      const parsed =
+        error instanceof Error && error.message.trim()
+          ? (() => {
+              try {
+                return JSON.parse(error.message) as Record<string, unknown>;
+              } catch {
+                return null;
+              }
+            })()
+          : null;
+
+      throw new Error(
+        JSON.stringify({
+          code: "supabase_error",
+          message:
+            typeof parsed?.message === "string" && parsed.message.trim()
+              ? parsed.message
+              : "Çeviri taslağı kaydedilemedi.",
+          status: Number(parsed?.status ?? 422),
+          rawText:
+            typeof parsed?.rawText === "string" && parsed.rawText.trim()
+              ? parsed.rawText
+              : error instanceof Error
+                ? error.message
+                : String(error ?? ""),
+          languageCode: normalizedLocale,
+          section: row.section,
+          sourceId: row.sourceId,
+          fieldKey: row.fieldKey,
+        }),
+      );
+    }
+  }
 
   return inserted.map(mapDraft);
 }

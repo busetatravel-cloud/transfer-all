@@ -11,6 +11,7 @@ export const revalidate = 0;
 
 export default async function SuperAdminDeployPage() {
   await requireRole("SUPER_ADMIN");
+  const productionTarget = process.env.PUBLIC_DOMAIN_TARGET?.trim() || null;
   const [healthCards, releases, checklistItems] = await Promise.all([
     getDeployHealthCards(),
     listDeployReleases(100),
@@ -22,7 +23,7 @@ export default async function SuperAdminDeployPage() {
       healthCards={healthCards}
       releases={releases}
       checklistItems={checklistItems}
+      productionTarget={productionTarget}
     />
   );
 }
-

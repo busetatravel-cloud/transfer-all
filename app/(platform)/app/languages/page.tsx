@@ -10,6 +10,11 @@ export default async function LanguagesPage() {
   const session = await requireBusinessSession();
   const panel = await getBusinessPanelData(session.businessId);
   const drafts = await readBusinessTranslationDrafts(session.businessId);
+  const aiEnabled = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const aiModel =
+    process.env.OPENAI_TRANSLATION_MODEL?.trim() ||
+    process.env.OPENAI_MODEL?.trim() ||
+    "gpt-4.1-mini";
 
   if (!panel.business) {
     return (
@@ -19,6 +24,13 @@ export default async function LanguagesPage() {
     );
   }
 
-  return <LanguagesCenter businessId={session.businessId} panel={panel} drafts={drafts} />;
+  return (
+    <LanguagesCenter
+      aiEnabled={aiEnabled}
+      aiModel={aiEnabled ? aiModel : ""}
+      businessId={session.businessId}
+      panel={panel}
+      drafts={drafts}
+    />
+  );
 }
-

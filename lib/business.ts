@@ -486,23 +486,40 @@ export async function getBusinessByDomain(domain: string) {
   const config = getSupabaseConfig();
 
   if (config) {
-    const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&domain=eq.${encodeURIComponent(
-        normalizedDomain,
-      )}&limit=1`,
-    );
+    const fetchBusiness = async (field: "domain" | "hostname", value: string) => {
+      const response = await supabaseFetch(
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,ssl_status,domain_status,created_at,updated_at&${field}=eq.${encodeURIComponent(
+          value,
+        )}&limit=1`,
+      );
 
-    if (response?.ok) {
+      if (!response?.ok) {
+        return null;
+      }
+
       const rows = (await response.json()) as Array<Record<string, unknown>>;
       return rows[0] ? fromSupabaseBusiness(rows[0]) : null;
-    }
+    };
 
-    return null;
+    const candidates = [normalizedDomain, `www.${normalizedDomain}`];
+    for (const candidate of candidates) {
+      const byDomain = await fetchBusiness("domain", candidate);
+      if (byDomain) {
+        return byDomain;
+      }
+
+      const byHostname = await fetchBusiness("hostname", candidate);
+      if (byHostname) {
+        return byHostname;
+      }
+    }
   }
 
   return (
     demoBusinesses.find(
-      (business) => business.domain?.toLowerCase() === normalizedDomain,
+      (business) =>
+        business.domain?.toLowerCase() === normalizedDomain ||
+        business.hostname?.toLowerCase() === normalizedDomain,
     ) ?? null
   );
 }

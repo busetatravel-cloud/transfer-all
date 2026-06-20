@@ -9,6 +9,7 @@ import {
   getSectionDescription,
   getSectionFieldOrder,
   getSectionSeeds,
+  getSectionLabel,
   replaceBusinessTranslationDrafts,
   type TranslationSection,
 } from "@/lib/content-translations";
@@ -79,6 +80,10 @@ function parseErrorResponse(error: unknown) {
     message: error instanceof Error ? error.message : "İşlem başarısız.",
     status: 500,
     rawText: "",
+    languageCode: "",
+    section: "",
+    fieldKey: "",
+    sourceId: "",
   };
 
   const candidate =
@@ -100,11 +105,19 @@ function parseErrorResponse(error: unknown) {
     const message = typeof parsed.message === "string" ? parsed.message : fallback.message;
     const status = Number(parsed.status ?? fallback.status);
     const rawText = typeof parsed.rawText === "string" ? parsed.rawText : "";
+    const languageCode = typeof parsed.languageCode === "string" ? parsed.languageCode : "";
+    const section = typeof parsed.section === "string" ? parsed.section : "";
+    const fieldKey = typeof parsed.fieldKey === "string" ? parsed.fieldKey : "";
+    const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId : "";
     return {
       code,
       message,
       status: Number.isFinite(status) ? status : fallback.status,
       rawText,
+      languageCode,
+      section,
+      fieldKey,
+      sourceId,
     };
   } catch {
     return fallback;
@@ -122,6 +135,11 @@ function mapActionError(error: unknown) {
     return jsonError(parsed.code, parsed.message, status, {
       status: parsed.status,
       rawText: parsed.rawText,
+      languageCode: parsed.languageCode || undefined,
+      section: parsed.section || undefined,
+      sectionLabel: parsed.section ? getSectionLabel(parsed.section as TranslationSection) : undefined,
+      fieldKey: parsed.fieldKey || undefined,
+      sourceId: parsed.sourceId || undefined,
     });
   }
 
@@ -139,6 +157,10 @@ function mapActionError(error: unknown) {
 
   return jsonError(parsed.code, parsed.message, parsed.status || 500, {
     rawText: parsed.rawText || undefined,
+    languageCode: parsed.languageCode || undefined,
+    section: parsed.section || undefined,
+    fieldKey: parsed.fieldKey || undefined,
+    sourceId: parsed.sourceId || undefined,
   });
 }
 
@@ -206,14 +228,32 @@ async function handleTranslateAction(
   const drafts = [];
 
   for (const currentSection of sections) {
-    const sectionDrafts = await translateSection(
-      businessId,
-      panel,
-      currentSection,
-      targetLocale,
-      sourceLocale,
-    );
-    drafts.push(...sectionDrafts);
+    try {
+      const sectionDrafts = await translateSection(
+        businessId,
+        panel,
+        currentSection,
+        targetLocale,
+        sourceLocale,
+      );
+      drafts.push(...sectionDrafts);
+    } catch (error) {
+      const parsed = parseErrorResponse(error);
+      throw new Error(
+        JSON.stringify({
+          code: parsed.code,
+          message:
+            parsed.message ||
+            `${getSectionLabel(currentSection)} çevirisi kaydedilemedi.`,
+          status: parsed.status,
+          rawText: parsed.rawText,
+          languageCode: parsed.languageCode || targetLocale,
+          section: parsed.section || currentSection,
+          fieldKey: parsed.fieldKey || "",
+          sourceId: parsed.sourceId || "",
+        }),
+      );
+    }
   }
 
   return jsonOk({
@@ -443,4 +483,3 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   return handleBusinessTranslations(request, "PATCH");
 }
-

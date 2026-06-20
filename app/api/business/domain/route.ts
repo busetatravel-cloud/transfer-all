@@ -11,6 +11,7 @@ import {
 import {
   buildDomainVerificationToken,
   formatDomainStatusLabel,
+  hasProductionTargetDomain,
   type DomainStatus,
 } from "@/lib/domain-utils";
 
@@ -46,30 +47,53 @@ function flattenTxtRecords(records: string[][]) {
     .filter(Boolean);
 }
 
+function normalizeDnsTarget(value: string) {
+  return value.trim().toLowerCase().replace(/\.$/, "");
+}
+
+function isWarningDomainStatus(status: DomainStatus | string | null | undefined) {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "active" || normalized === "ssl_ready" || normalized === "verified";
+}
+
+function getGuideModeMessage() {
+  return "Production hedef domain/IP ayarlanmadı. Bu ekran rehber modunda çalışır.";
+}
+
 async function checkDnsForHostname(hostname: string, verificationToken: string) {
   const safeHostname = hostname.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-  const apexHost = safeHostname.startsWith("www.") ? safeHostname.replace(/^www\./i, "") : safeHostname;
+  const apexHost = safeHostname.startsWith("www.")
+    ? safeHostname.replace(/^www\./i, "")
+    : safeHostname;
   const subHost = apexHost.startsWith("www.") ? apexHost : `www.${apexHost}`;
+  const expectedARecord = "76.76.21.21";
+  const expectedCname = "cname.vercel-dns.com";
 
   const [aRecords, cnameRecords, txtRecords, apexTxtRecords] = await Promise.all([
-    resolve4(safeHostname).catch(() => [] as string[]),
-    resolveCname(safeHostname).catch(() => [] as string[]),
+    resolve4(apexHost).catch(() => [] as string[]),
+    resolveCname(subHost).catch(() => [] as string[]),
     resolveTxt(`_verify.${apexHost}`).catch(() => [] as string[][]),
-    resolveTxt(safeHostname).catch(() => [] as string[][]),
+    resolveTxt(apexHost).catch(() => [] as string[][]),
   ]);
 
   const txtValues = [...flattenTxtRecords(txtRecords), ...flattenTxtRecords(apexTxtRecords)];
-  const detected = aRecords.length > 0 || cnameRecords.length > 0;
+  const normalizedCnames = cnameRecords.map(normalizeDnsTarget);
+  const detected =
+    aRecords.some((item) => item === expectedARecord) ||
+    normalizedCnames.some((item) => item === expectedCname) ||
+    txtValues.some((item) => item === verificationToken);
   const verified = txtValues.some((item) => item === verificationToken);
 
   return {
     detected,
     verified,
     aRecords,
-    cnameRecords,
+    cnameRecords: normalizedCnames,
     txtValues,
-    expectedAHost: apexHost === safeHostname ? "@" : apexHost,
-    expectedCnameHost: subHost,
+    expectedAHost: "@",
+    expectedCnameHost: "www",
+    expectedARecord,
+    expectedCname,
   };
 }
 
@@ -215,12 +239,22 @@ export async function PATCH(request: Request) {
       const hostname = (current.hostname ?? current.domain ?? "").trim();
       const verificationToken = current.verificationToken ?? buildDomainVerificationToken();
       const dnsCheck = await checkDnsForHostname(hostname, verificationToken);
-
-      const nextStatus: DomainStatus = dnsCheck.verified
-        ? "verified"
-        : dnsCheck.detected
-          ? "dns_detected"
-          : "failed";
+      const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
+      const preserveStatus = isWarningDomainStatus(currentStatus) ? currentStatus : null;
+      const productionTargetReady = hasProductionTargetDomain();
+      const nextStatus: DomainStatus = preserveStatus
+        ? preserveStatus
+        : productionTargetReady
+          ? dnsCheck.verified
+            ? "verified"
+            : dnsCheck.detected
+              ? "dns_detected"
+              : "pending"
+          : dnsCheck.verified
+            ? "verified"
+            : dnsCheck.detected
+              ? "dns_detected"
+              : "pending";
 
       const business = await updateBusinessDomainRecord(businessId, {
         domain: hostname,
@@ -230,7 +264,7 @@ export async function PATCH(request: Request) {
         verifiedAt: dnsCheck.verified ? current.verifiedAt ?? new Date().toISOString() : current.verifiedAt,
         activatedAt: current.activatedAt ?? null,
         lastCheckedAt: new Date().toISOString(),
-        sslStatus: current.sslStatus === "active" ? "active" : "pending",
+        sslStatus: current.sslStatus === "ready" || current.sslStatus === "active" ? current.sslStatus : "checking",
       });
 
       await recordAuditLog({
@@ -251,9 +285,11 @@ export async function PATCH(request: Request) {
           ? "DNS doğrulandı."
           : dnsCheck.detected
             ? "DNS kaydı algılandı."
-            : "DNS kaydı bulunamadı.",
+            : getGuideModeMessage(),
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         dnsCheck,
+        warning: !productionTargetReady,
+        guideMode: !productionTargetReady,
       });
     }
 
@@ -269,25 +305,26 @@ export async function PATCH(request: Request) {
       const hostname = (current.hostname ?? current.domain ?? "").trim();
       const sslCheck = await checkSslForHostname(hostname);
       const now = new Date().toISOString();
-
-      const isVerified = current.domainStatus === "verified" || current.domainStatus === "ssl_ready" || current.domainStatus === "active";
+      const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
+      const preserveStatus = isWarningDomainStatus(currentStatus) ? currentStatus : null;
+      const productionTargetReady = hasProductionTargetDomain();
       const nextDomainStatus: DomainStatus = sslCheck.ok
-        ? isVerified
+        ? currentStatus === "active"
           ? "active"
-          : "ssl_ready"
-        : current.domainStatus === "active"
-          ? "failed"
-          : current.domainStatus;
+          : productionTargetReady
+            ? "ssl_ready"
+            : currentStatus
+        : preserveStatus ?? currentStatus ?? "pending";
 
       const business = await updateBusinessDomainRecord(businessId, {
         domain: hostname,
         hostname,
         verificationToken: current.verificationToken ?? buildDomainVerificationToken(),
         domainStatus: nextDomainStatus,
-        verifiedAt: current.verifiedAt ?? (isVerified ? now : null),
+        verifiedAt: current.verifiedAt ?? (sslCheck.ok ? now : null),
         activatedAt: nextDomainStatus === "active" ? current.activatedAt ?? now : current.activatedAt,
         lastCheckedAt: now,
-        sslStatus: sslCheck.ok ? "active" : "failed",
+        sslStatus: productionTargetReady && sslCheck.ok ? "ready" : "checking",
       });
 
       await recordAuditLog({
@@ -304,9 +341,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         ok: true,
         business,
-        message: sslCheck.ok ? "SSL kontrolü başarılı." : "SSL sertifikası doğrulanamadı.",
+        message: sslCheck.ok ? "SSL sertifikası hazır." : "SSL sertifikası henüz hazır değil.",
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         sslCheck,
+        warning: !productionTargetReady || !sslCheck.ok,
+        guideMode: !productionTargetReady,
       });
     }
 

@@ -1,3 +1,5 @@
+import { isReservedPlatformDomain, normalizeDomain } from "@/lib/platform";
+
 export type DomainStatus =
   | "pending"
   | "dns_detected"
@@ -6,7 +8,7 @@ export type DomainStatus =
   | "active"
   | "failed";
 
-export type DomainSslStatus = "pending" | "issued" | "active" | "failed";
+export type DomainSslStatus = "pending" | "checking" | "ready" | "failed" | "active";
 
 export type DomainProvider =
   | "vercel"
@@ -162,16 +164,38 @@ export function formatDomainStatusLabel(status: string | null | undefined) {
 
 export function formatSslStatusLabel(status: string | null | undefined) {
   switch (String(status ?? "").trim().toLowerCase()) {
+    case "checking":
+      return "Kontrol ediliyor";
     case "issued":
-      return "Sertifika hazır";
+    case "ready":
     case "active":
-      return "SSL aktif";
+      return "SSL hazır";
     case "failed":
       return "SSL başarısız";
     case "pending":
     default:
       return "Bekliyor";
   }
+}
+
+export function getProductionTargetDomain() {
+  return normalizeDomain(process.env.PUBLIC_DOMAIN_TARGET);
+}
+
+export function hasProductionTargetDomain() {
+  return Boolean(getProductionTargetDomain());
+}
+
+export function getBusinessPublicTarget(
+  hostname: string | null | undefined,
+) {
+  const normalized = normalizeDomain(hostname);
+
+  if (normalized && !isReservedPlatformDomain(normalized)) {
+    return `https://${normalized}`;
+  }
+
+  return null;
 }
 
 function buildProviderGuide(provider: DomainProvider, hostname: string, token: string) {
@@ -403,4 +427,3 @@ export function buildDomainAdapters(
     },
   ];
 }
-

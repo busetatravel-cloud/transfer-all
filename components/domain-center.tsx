@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import type { BusinessRecord } from "@/lib/business";
 import {
   buildDomainAdapters,
+  getBusinessPublicTarget,
+  getProductionTargetDomain,
+  hasProductionTargetDomain,
   formatDomainStatusLabel,
   formatSslStatusLabel,
   getDomainStepIndex,
@@ -92,8 +95,13 @@ export function DomainCenter({ business }: Props) {
   );
   const adapter = adapters.find((item) => item.provider === provider) ?? adapters[0];
   const stepIndex = getDomainStepIndex(business.domainStatus);
-  const isActive = business.domainStatus === "active";
-  const activeLink = currentHostname ? `https://${currentHostname}` : null;
+  const isOpenable =
+    Boolean(currentHostname.trim()) &&
+    business.domainStatus === "active" &&
+    (business.sslStatus === "ready" || business.sslStatus === "active");
+  const activeLink = getBusinessPublicTarget(currentHostname) ?? null;
+  const productionTarget = getProductionTargetDomain();
+  const productionTargetReady = hasProductionTargetDomain();
 
   async function submit(
     action: "save" | "check_dns" | "check_ssl" | "remove",
@@ -261,6 +269,11 @@ export function DomainCenter({ business }: Props) {
               void submit("save", event);
             }}
           >
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+              Bu domain, business public sitesine yönlenir. Çalışması için ana SaaS uygulaması
+              production ortamında yayında olmalıdır.
+            </div>
+
             <label className="grid gap-2">
               <span className="text-sm font-medium text-slate-700">Hostname</span>
               <input
@@ -333,26 +346,50 @@ export function DomainCenter({ business }: Props) {
               <MetaItem label="SSL status" value={sslLabel} />
             </div>
 
+            <div
+              className={[
+                "rounded-[24px] border px-4 py-3 text-sm leading-6",
+                productionTargetReady
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-800",
+              ].join(" ")}
+            >
+              <div className="font-semibold">Production hedef</div>
+              <div className="mt-1 break-words">
+                {productionTarget
+                  ? `PUBLIC_DOMAIN_TARGET: ${productionTarget}`
+                  : "Production hedef domain/IP ayarlanmadı."}
+              </div>
+            </div>
+
             {activeLink ? (
               <a
                 className={[
                   "inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition",
-                  isActive
+                  isOpenable && activeLink
                     ? "bg-slate-950 text-white hover:bg-slate-800"
                     : "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400",
                 ].join(" ")}
-                href={isActive ? activeLink : undefined}
+                href={isOpenable && activeLink ? activeLink : undefined}
                 rel="noreferrer"
-                target={isActive ? "_blank" : undefined}
+                target={isOpenable && activeLink ? "_blank" : undefined}
                 onClick={(event) => {
-                  if (!isActive) {
+                  if (!isOpenable || !activeLink) {
                     event.preventDefault();
                   }
                 }}
               >
                 Siteyi Aç
               </a>
-            ) : null}
+            ) : (
+              <button
+                className="inline-flex h-11 cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-400"
+                disabled
+                type="button"
+              >
+                Siteyi Aç
+              </button>
+            )}
           </form>
         </article>
 

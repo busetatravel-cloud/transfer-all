@@ -13,6 +13,7 @@ type Props = {
   healthCards: DeployHealthCard[];
   releases: DeployReleaseRecord[];
   checklistItems: DeployChecklistItem[];
+  productionTarget: string | null;
 };
 
 type State = {
@@ -65,6 +66,7 @@ export function SuperAdminDeployModule({
   healthCards,
   releases,
   checklistItems,
+  productionTarget,
 }: Props) {
   const router = useRouter();
   const [state, setState] = useState<State>({ status: "idle", message: "" });
@@ -199,6 +201,12 @@ export function SuperAdminDeployModule({
           Bu ekran yalnızca super admin içindir. Release notları, deploy geçmişi ve
           production checklist birlikte yönetilir.
         </p>
+        <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+          <div className="font-semibold">Production target</div>
+          <div className="mt-1 break-words">
+            {productionTarget ?? "PUBLIC_DOMAIN_TARGET ayarlanmadı."}
+          </div>
+        </div>
       </article>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
