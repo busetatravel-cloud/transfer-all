@@ -39,6 +39,14 @@ export type CreateAuthUserResult = AuthJsonResponse<{
   errorMessage: string | null;
 };
 
+export type AuthUserLookupResult = {
+  ok: boolean;
+  status: number;
+  rawText: string;
+  user: SupabaseAuthUserRecord | null;
+  errorMessage: string | null;
+};
+
 export type PasswordLoginResult = AuthJsonResponse<{
   user?: SupabaseAuthUserRecord;
   access_token?: string;
@@ -246,6 +254,72 @@ export async function createSupabaseAuthUser(input: CreateAuthUserInput): Promis
     user,
     duplicateEmail: !response.ok && isDuplicateEmailError(response.status, parsed.rawText),
     errorMessage: response.ok ? null : errorMessage || "Auth user olusturulamadi.",
+  };
+}
+
+export async function findSupabaseAuthUserByEmail(email: string): Promise<AuthUserLookupResult> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const serviceRoleExists = Boolean(getAdminKey().trim());
+
+  console.info("supabase.auth.findUserByEmail.request", {
+    action: "find_user_by_email",
+    email: normalizedEmail,
+    serviceRoleExists,
+  });
+
+  const response = await authFetch(
+    `/admin/users?email=${encodeURIComponent(normalizedEmail)}`,
+    { method: "GET" },
+    { admin: true },
+  );
+
+  if (!response) {
+    return {
+      ok: false,
+      status: 0,
+      rawText: "Supabase auth baglantisi kurulamadi.",
+      user: null,
+      errorMessage: "Supabase auth baglantisi kurulamadi.",
+    };
+  }
+
+  const parsed = await readJsonResponse<{
+    users?: SupabaseAuthUserRecord[];
+    user?: SupabaseAuthUserRecord;
+  }>(response);
+  const candidate = Array.isArray(parsed.data)
+    ? parsed.data[0]
+    : ((parsed.data as { users?: SupabaseAuthUserRecord[] } | null)?.users?.[0] ??
+      (parsed.data as { user?: SupabaseAuthUserRecord } | null)?.user ??
+      null);
+  const user = extractAuthUser(candidate);
+  const errorMessage = response.ok
+    ? null
+    : (() => {
+        try {
+          const body = JSON.parse(parsed.rawText) as Record<string, unknown>;
+          return String(body.msg ?? body.message ?? body.error ?? "Kullanici bulunamadi.");
+        } catch {
+          return parsed.rawText || "Kullanici bulunamadi.";
+        }
+      })();
+
+  console.info("supabase.auth.findUserByEmail.response", {
+    action: "find_user_by_email",
+    email: normalizedEmail,
+    serviceRoleExists,
+    status: response.status,
+    ok: response.ok,
+    foundAuthUserId: user?.id ?? null,
+    message: errorMessage,
+  });
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    rawText: parsed.rawText,
+    user,
+    errorMessage,
   };
 }
 

@@ -14,6 +14,13 @@ type FormState = {
   code: string | null;
   error: string | null;
   success: string | null;
+  debug: {
+    authCreated: boolean | null;
+    authUserId: string | null;
+    publicUserUpdated: boolean | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+  } | null;
 };
 
 type ActionTarget = "business" | "admin";
@@ -25,6 +32,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
     code: null,
     error: null,
     success: null,
+    debug: null,
   });
   const [isPending, startTransition] = useTransition();
   const [adminEmail, setAdminEmail] = useState("");
@@ -46,7 +54,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
       }
     }
 
-    setState({ code: null, error: null, success: null });
+    setState({ code: null, error: null, success: null, debug: null });
 
     const response = await fetch(`/api/super-admin/businesses/${business.id}`, {
       method: "PATCH",
@@ -56,25 +64,32 @@ export function SuperAdminBusinessCard({ business }: Props) {
 
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
-        | { code?: string; message?: string; error?: string }
+        | {
+            code?: string;
+            message?: string;
+            error?: string;
+            debug?: FormState["debug"];
+          }
         | null;
 
       setState({
         code: body?.code ?? null,
         error: body?.message ?? body?.error ?? "Islem basarisiz.",
+        debug: body?.debug ?? null,
         success: null,
       });
       return;
     }
 
     const body = (await response.json().catch(() => null)) as
-      | { message?: string }
+      | { message?: string; debug?: FormState["debug"] }
       | null;
 
     setState({
       code: null,
       error: null,
       success: body?.message ?? "Islem tamamlandi.",
+      debug: body?.debug ?? null,
     });
 
     startTransition(() => {
@@ -83,7 +98,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
   }
 
   async function createAdmin() {
-    setState({ code: null, error: null, success: null });
+    setState({ code: null, error: null, success: null, debug: null });
 
     const response = await fetch(`/api/super-admin/businesses/${business.id}`, {
       method: "POST",
@@ -91,14 +106,15 @@ export function SuperAdminBusinessCard({ business }: Props) {
       body: JSON.stringify({ adminEmail, adminPassword }),
     });
 
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as
-        | { code?: string; message?: string; error?: string }
-        | null;
+    const body = (await response.json().catch(() => null)) as
+      | { code?: string; message?: string; error?: string; debug?: FormState["debug"] }
+      | null;
 
+    if (!response.ok) {
       setState({
         code: body?.code ?? null,
         error: body?.message ?? body?.error ?? "Admin olusturulamadi.",
+        debug: body?.debug ?? null,
         success: null,
       });
       return;
@@ -109,7 +125,44 @@ export function SuperAdminBusinessCard({ business }: Props) {
     setState({
       code: null,
       error: null,
-      success: "Admin olusturuldu.",
+      success: body?.message ?? "Admin olusturuldu.",
+      debug: body?.debug ?? null,
+    });
+
+    startTransition(() => {
+      router.refresh();
+    });
+  }
+
+  async function repairAdmin() {
+    setState({ code: null, error: null, success: null, debug: null });
+
+    const response = await fetch(
+      `/api/super-admin/businesses/${business.id}/admin/repair`,
+      {
+        method: "POST",
+      },
+    );
+
+    const body = (await response.json().catch(() => null)) as
+      | { code?: string; message?: string; error?: string; debug?: FormState["debug"] }
+      | null;
+
+    if (!response.ok) {
+      setState({
+        code: body?.code ?? null,
+        error: body?.message ?? body?.error ?? "Admin repair basarisiz.",
+        success: null,
+        debug: body?.debug ?? null,
+      });
+      return;
+    }
+
+    setState({
+      code: null,
+      error: null,
+      success: body?.message ?? "Admin repair tamamlandi.",
+      debug: body?.debug ?? null,
     });
 
     startTransition(() => {
@@ -227,6 +280,18 @@ export function SuperAdminBusinessCard({ business }: Props) {
             {state.success}
           </p>
         ) : null}
+        {state.debug ? (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+            <p className="font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Debug
+            </p>
+            <p>authCreated: {String(state.debug.authCreated)}</p>
+            <p>authUserId: {state.debug.authUserId ?? "-"}</p>
+            <p>publicUserUpdated: {String(state.debug.publicUserUpdated)}</p>
+            <p>errorCode: {state.debug.errorCode ?? "-"}</p>
+            <p>errorMessage: {state.debug.errorMessage ?? "-"}</p>
+          </div>
+        ) : null}
 
         <div className="mt-4 grid gap-3">
           <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -279,6 +344,9 @@ export function SuperAdminBusinessCard({ business }: Props) {
               </div>
             )}
           </div>
+          <ActionButton disabled={isPending} onClick={repairAdmin}>
+            Admin repair
+          </ActionButton>
           {hasAdmin ? (
             <ActionButton
               disabled={isPending}

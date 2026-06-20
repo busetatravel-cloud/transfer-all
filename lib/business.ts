@@ -17,6 +17,7 @@ import {
 import {
   createSupabaseAuthUser,
   deleteSupabaseAuthUser,
+  findSupabaseAuthUserByEmail,
   getSupabaseAuthUserById,
   signInWithSupabaseAuth,
   updateSupabaseAuthUserPassword,
@@ -118,6 +119,14 @@ export type BusinessDomainUpdateInput = {
 export type BusinessCreateResult = {
   business: BusinessRecord;
   admin: Omit<UserRecord, "passwordHash">;
+};
+
+export type BusinessAdminCreateDebug = {
+  authCreated: boolean;
+  authUserId: string | null;
+  publicUserUpdated: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
 };
 
 export type SupabaseListFetchError = {
@@ -1743,7 +1752,7 @@ export async function createBusinessAdminRecord(
   businessId: string,
   email: string,
   password: string,
-) {
+): Promise<BusinessAdminCreateDebug> {
   const normalizedEmail = email.trim().toLowerCase();
   const nextPassword = password.trim();
 
@@ -1767,6 +1776,14 @@ export async function createBusinessAdminRecord(
     }
 
     if (existingAdmin && !existingAdmin.deleted_at) {
+      const existingAuthLookup = existingAdmin.auth_user_id
+        ? await getSupabaseAuthUserById(String(existingAdmin.auth_user_id))
+        : null;
+
+      if (existingAdmin.auth_user_id && !existingAuthLookup?.user?.id) {
+        await clearUserAuthBinding(String(existingAdmin.id));
+      }
+
       const repaired = await ensureBusinessAdminAuthUser({
         ...fromSupabaseUser(existingAdmin),
         passwordHash,
@@ -1794,7 +1811,13 @@ export async function createBusinessAdminRecord(
         await updateSupabaseAuthUserPassword(nextAuthUserId, nextPassword).catch(() => null);
       }
 
-      return true;
+      return {
+        authCreated: !existingAdmin.auth_user_id && Boolean(nextAuthUserId),
+        authUserId: nextAuthUserId,
+        publicUserUpdated: true,
+        errorCode: null,
+        errorMessage: null,
+      };
     }
 
     const authResult = await createSupabaseAuthUser({
@@ -1813,14 +1836,24 @@ export async function createBusinessAdminRecord(
     });
 
     let authUserId = authResult.user?.id ?? null;
-    const createdAuthUser = Boolean(authUserId && !authResult.duplicateEmail);
+    let authCreated = Boolean(authUserId && !authResult.duplicateEmail);
+
+    if (!authUserId && authResult.duplicateEmail) {
+      const existingAuthUser = await findSupabaseAuthUserByEmail(normalizedEmail);
+      if (existingAuthUser.user?.id) {
+        authUserId = existingAuthUser.user.id;
+      }
+    }
+
     if (!authUserId && authResult.duplicateEmail) {
       const loginResult = await signInWithSupabaseAuth(normalizedEmail, nextPassword);
-      authUserId = loginResult.user?.id ?? null;
+      authUserId = loginResult.user?.id ?? authUserId;
     }
 
     if (!authUserId) {
-      throw new Error(authResult.errorMessage ?? "Business admin olusturulamadi.");
+      throw new Error(
+        `AUTH_CREATE_FAILED: ${authResult.errorMessage ?? "Business admin olusturulamadi."}`,
+      );
     }
 
     try {
@@ -1836,9 +1869,19 @@ export async function createBusinessAdminRecord(
         deletedAt: null,
         active: true,
       });
-      return true;
+      if (!authCreated && authResult.user?.id) {
+        authCreated = true;
+      }
+
+      return {
+        authCreated,
+        authUserId,
+        publicUserUpdated: true,
+        errorCode: null,
+        errorMessage: null,
+      };
     } catch (error) {
-      if (createdAuthUser && authUserId) {
+      if (authCreated && authUserId) {
         await deleteSupabaseAuthUser(authUserId).catch(() => null);
       }
       throw error;
@@ -1872,7 +1915,65 @@ export async function createBusinessAdminRecord(
     updatedAt: changedAt,
   });
 
-  return true;
+  return {
+    authCreated: false,
+    authUserId: null,
+    publicUserUpdated: true,
+    errorCode: null,
+    errorMessage: null,
+  };
+}
+
+export async function repairBusinessAdminRecord(
+  businessId: string,
+): Promise<BusinessAdminCreateDebug> {
+  const config = getSupabaseConfig();
+
+  if (!config) {
+    throw new Error("Supabase baglantisi yok.");
+  }
+
+  const adminRow = await readBusinessAdminRowByBusinessId(businessId);
+
+  if (!adminRow?.id) {
+    throw new Error("Business admin bulunamadi.");
+  }
+
+  const admin = fromSupabaseUser(adminRow);
+
+  if (!admin.passwordPlaintext) {
+    throw new Error("Business admin sifresi bulunamadi; repair yapilamadi.");
+  }
+
+  const authUserId = admin.authUserId?.trim() || null;
+  if (authUserId) {
+    const authLookup = await getSupabaseAuthUserById(authUserId);
+    if (authLookup.ok && authLookup.user?.id) {
+      await updateSupabaseAuthUserPassword(authUserId, admin.passwordPlaintext).catch(() => null);
+      return {
+        authCreated: false,
+        authUserId,
+        publicUserUpdated: false,
+        errorCode: null,
+        errorMessage: null,
+      };
+    }
+
+    await clearUserAuthBinding(admin.id);
+  }
+
+  const repaired = await repairBusinessAdminAuthUser({
+    ...admin,
+    authUserId: null,
+  });
+
+  return {
+    authCreated: Boolean(repaired.authUserId),
+    authUserId: repaired.authUserId,
+    publicUserUpdated: true,
+    errorCode: null,
+    errorMessage: null,
+  };
 }
 
 export type BusinessUpdateInput = {

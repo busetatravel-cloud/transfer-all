@@ -158,10 +158,20 @@ export async function POST(
       serviceRoleExists: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
     });
 
-    await createBusinessAdminRecord(id, adminEmail, adminPassword);
+    const result = await createBusinessAdminRecord(id, adminEmail, adminPassword);
     const business = await getBusinessById(id);
     revalidatePath("/super-admin");
-    return NextResponse.json({ ok: true, business });
+    return NextResponse.json({
+      ok: true,
+      business,
+      debug: {
+        authCreated: result.authCreated,
+        authUserId: result.authUserId,
+        publicUserUpdated: result.publicUserUpdated,
+        errorCode: result.errorCode,
+        errorMessage: result.errorMessage,
+      },
+    });
   } catch (error) {
     const rawMessage =
       error instanceof Error ? error.message : "Admin olusturulamadi.";
@@ -177,7 +187,18 @@ export async function POST(
       rawMessage,
     });
     return NextResponse.json(
-      { ok: false, code, message },
+      {
+        ok: false,
+        code,
+        message,
+        debug: {
+          authCreated: false,
+          authUserId: null,
+          publicUserUpdated: false,
+          errorCode: code,
+          errorMessage: message,
+        },
+      },
       { status: 400 },
     );
   }
