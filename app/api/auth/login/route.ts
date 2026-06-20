@@ -1,83 +1,72 @@
-import { NextResponse } from "next/server";
-import { authenticate, createLoginToken } from "@/lib/auth";
-import { getLandingPath } from "@/lib/platform";
-import { SESSION_COOKIE_NAME } from "@/lib/session";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/auth-helpers-nextjs";
+import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/supabase-config";
 
 export async function POST(req: Request) {
   try {
-    let body: { email?: string; password?: string };
+    const { email, password } = (await req.json()) as {
+      email?: string;
+      password?: string;
+    };
 
-    try {
-      body = (await req.json()) as { email?: string; password?: string };
-    } catch (error) {
+    const normalizedEmail = email?.trim();
+
+    if (!normalizedEmail || !password) {
+      return Response.json({ error: "missing_credentials" }, { status: 400 });
+    }
+
+    const supabaseUrl = getSupabaseUrl();
+    const supabaseAnonKey = getSupabaseAnonKey();
+
+    if (!supabaseUrl || !supabaseAnonKey) {
       return Response.json(
-        {
-          error: "invalid_request_body",
-          message: String(error),
-        },
-        { status: 400 },
+        { error: "supabase_config_missing" },
+        { status: 500 },
       );
     }
 
-    const email = body.email?.trim().toLowerCase() ?? "";
-    const password = body.password ?? "";
+    const cookieStore = await cookies();
 
-    if (!email || !password) {
-      return Response.json(
-        {
-          ok: false,
-          error: "missing_credentials",
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll().map((cookie) => ({
+            name: cookie.name,
+            value: cookie.value,
+          }));
         },
-        { status: 400 },
-      );
+        setAll(cookiesToSet) {
+          try {
+            for (const cookie of cookiesToSet) {
+              cookieStore.set(cookie.name, cookie.value, cookie.options);
+            }
+          } catch {
+            // Route handler cookie write best-effort.
+          }
+        },
+      },
+    });
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (error) {
+      return Response.json({ error: error.message }, { status: 401 });
     }
 
-    const result = await authenticate(email, password);
-
-    if (!result.ok || !result.session) {
-      return Response.json(
-        {
-          ok: false,
-          currentStep: result.currentStep,
-          authError: true,
-          authMessage: result.authMessage ?? "Giris islemi tamamlanamadi.",
-          sessionCreated: false,
-        },
-        { status: 401 },
-      );
-    }
-
-    const token = createLoginToken(result.session);
-    const response = NextResponse.json({
+    return Response.json({
       ok: true,
-      currentStep: result.currentStep,
-      authError: false,
-      authMessage: null,
-      sessionCreated: true,
-      role: result.session.role,
-      redirectTo: getLandingPath(result.session.role),
+      userId: data.user?.id ?? null,
     });
-
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    return response;
   } catch (error) {
-    console.error("/api/auth/login error:", error);
     return Response.json(
       {
-        ok: false,
-        currentStep: "exception",
-        authError: true,
-        authMessage: error instanceof Error ? error.message : "Login islemi su anda tamamlanamadi.",
-        sessionCreated: false,
+        error: "invalid_request_body",
+        message: String(error),
       },
-      { status: 500 },
+      { status: 400 },
     );
   }
 }
