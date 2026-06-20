@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MediaFrame, PanelSection, PublicSiteShell } from "@/components/public-site-shell";
 import { PublicQuoteForm } from "@/components/public-quote-form";
-import { getPublicSiteDataFromRequest } from "@/lib/public-site";
+import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import {
   resolveBusinessMediaAltText,
   resolveBusinessMediaSourceUrl,
@@ -12,60 +12,76 @@ import { buildBusinessSeoMetadata } from "@/lib/seo";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const panel = await getPublicSiteDataFromRequest();
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     return { title: "Iletisim", description: "Iletisim sayfasi." };
   }
 
   return buildBusinessSeoMetadata({
-    business: panel.business,
-    seo: panel.seo,
-    locales: panel.locales,
+    business: site.panel.business,
+    seo: site.panel.seo,
+    locales: site.panel.locales,
     pathname: "/contact",
-    title: `${panel.business.name} | Iletisim`,
-    description: panel.seo.metaDescription || "Business iletisim bilgileri",
+    title: `${site.panel.business.name} | Iletisim`,
+    description: site.panel.seo.metaDescription || "Business iletisim bilgileri",
   });
 }
 
-export default async function ContactPage() {
-  const panel = await getPublicSiteDataFromRequest();
+export default async function ContactPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}) {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     notFound();
   }
 
   return (
-    <PublicSiteShell business={panel.business}>
+    <PublicSiteShell
+      business={site.panel.business}
+      locale={site.locale}
+      locales={site.availableLocales}
+      currentPath="/contact"
+      copy={site.copy}
+    >
       <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <PanelSection
-          eyebrow="Iletisim"
-          title="Business iletisim kanallari"
-          description="Iletisim bilgileri dogrudan business kaydindan okunur."
+          eyebrow={site.copy.menus.contact}
+          title={site.copy.publicForm.title}
+          description={site.copy.publicForm.description}
         >
           <div className="grid gap-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <MediaFrame
               imageAlt={resolveBusinessMediaAltText(
-                panel.mediaAssets,
+                site.panel.mediaAssets,
                 "logo",
-                `${panel.business.name} logo`,
+                `${site.panel.business.name} logo`,
               )}
-              imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "logo")}
+              imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "logo")}
               label="Logo"
             />
-            <InfoRow label="Email" value={panel.business.email} />
-            <InfoRow label="Telefon" value={panel.business.phone ?? "-"} />
-            <InfoRow label="WhatsApp" value={panel.business.whatsapp ?? "-"} />
+            <InfoRow label="Email" value={site.panel.business.email} />
+            <InfoRow label="Telefon" value={site.panel.business.phone ?? "-"} />
+            <InfoRow label="WhatsApp" value={site.panel.business.whatsapp ?? "-"} />
           </div>
         </PanelSection>
 
         <PanelSection
-          eyebrow="Teklif formu"
-          title="Kisa iletisim formu"
-          description="Gonderilen talepler requests tablosuna businessId ile kaydedilir."
+          eyebrow={site.copy.publicForm.title}
+          title={site.copy.publicForm.title}
+          description={site.copy.publicForm.description}
         >
-          <PublicQuoteForm businessId={panel.business.id} />
+          <PublicQuoteForm businessId={site.panel.business.id} copy={site.copy.publicForm} />
         </PanelSection>
       </section>
     </PublicSiteShell>

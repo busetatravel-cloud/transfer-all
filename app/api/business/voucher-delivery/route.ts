@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
+import { getBusinessPanelData } from "@/lib/business-panel";
 import { sendVoucherMail } from "@/lib/mail";
 import { sendVoucherWhatsApp } from "@/lib/whatsapp";
 import { getReservationById } from "@/lib/reservation-service";
@@ -13,6 +14,8 @@ import {
   getBusinessVoucherByRequestId,
 } from "@/lib/vouchers";
 import { createVoucherDeliveryLog } from "@/lib/voucher-delivery";
+import { getLocalizedPublicSiteData } from "@/lib/public-localization";
+import { normalizeLanguageCode } from "@/lib/languages";
 
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -111,9 +114,18 @@ export async function POST(request: Request) {
     return buildErrorResponse(404, "not_found", "Voucher bulunamadı.");
   }
 
+  const panel = await getBusinessPanelData(auth.session.businessId);
+  const preferredLocale =
+    normalizeLanguageCode(context.voucher.language) ??
+    normalizeLanguageCode(context.reservation.language) ??
+    normalizeLanguageCode(panel.seo.defaultLocale) ??
+    "tr";
+  const localization = await getLocalizedPublicSiteData(panel, preferredLocale);
+
   const mailTemplate = buildVoucherMailTemplate(context.reservation, context.voucher, {
     voucherLink: buildVoucherLinkPlaceholder(context.voucher.id),
     businessName: context.voucher.businessName,
+    copy: localization?.copy.voucher,
   });
   const whatsappTemplate = buildVoucherWhatsAppTemplate(
     context.reservation,
@@ -121,6 +133,7 @@ export async function POST(request: Request) {
     {
       voucherLink: buildVoucherLinkPlaceholder(context.voucher.id),
       businessName: context.voucher.businessName,
+      copy: localization?.copy.voucher,
     },
   );
 

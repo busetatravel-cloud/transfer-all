@@ -6,51 +6,110 @@ import type { BusinessRecord } from "@/lib/business";
 import { MEDIA_PLACEHOLDER_SRC } from "@/lib/media";
 import { joinPublicPath } from "@/lib/public-path";
 import { PublicAnalyticsTracker } from "@/components/public-analytics-tracker";
+import {
+  SUPPORTED_LANGUAGES,
+  isRTLLanguage,
+  type SupportedLanguageCode,
+} from "@/lib/languages";
+import type { PublicCopy } from "@/lib/public-copy";
 
-const navItems = [
-  { href: "/", label: "Ana sayfa" },
-  { href: "/services", label: "Hizmetler" },
-  { href: "/vehicles", label: "Araçlar" },
-  { href: "/routes", label: "Rotalar" },
-  { href: "/blog", label: "Blog" },
-  { href: "/contact", label: "İletişim" },
-  { href: "/quote", label: "Teklif al" },
-];
+const baseNavItems = [
+  { href: "/", key: "home" },
+  { href: "/services", key: "services" },
+  { href: "/vehicles", key: "vehicles" },
+  { href: "/routes", key: "routes" },
+  { href: "/blog", key: "blog" },
+  { href: "/contact", key: "contact" },
+  { href: "/quote", key: "quote" },
+  { href: "/booking", key: "booking" },
+] as const;
 
 export function PublicSiteShell({
   business,
   children,
   basePath = "",
   trackAnalytics = true,
+  locale = "tr",
+  locales = [],
+  currentPath = "/",
+  copy,
 }: {
   business: BusinessRecord;
   children: ReactNode;
   basePath?: string;
   trackAnalytics?: boolean;
+  locale?: SupportedLanguageCode | string;
+  locales?: Array<{ code: string; name?: string }>;
+  currentPath?: string;
+  copy?: PublicCopy;
 }) {
   const buildHref = (href: string) => joinPublicPath(basePath, href);
+  const currentRoute = currentPath.startsWith("/") ? currentPath : `/${currentPath}`;
+  const currentUrl = buildHref(currentRoute);
+  const localizedHref = (href: string) => {
+    const baseHref = buildHref(href);
+    return `${baseHref}${baseHref.includes("?") ? "&" : "?"}lang=${encodeURIComponent(String(locale))}`;
+  };
+  const rtl = isRTLLanguage(locale);
+  const availableLocales = locales.length
+    ? locales
+        .map((item) => {
+          const language = SUPPORTED_LANGUAGES.find((entry) => entry.code === item.code.toLowerCase());
+          return language ? { ...language, displayName: item.name || language.label } : null;
+        })
+        .filter((item): item is { code: SupportedLanguageCode; label: string; nativeLabel: string; direction: "ltr" | "rtl"; displayName: string } => Boolean(item))
+    : [];
+  const navCopy = copy?.menus;
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_40%,#f1f5f9_100%)] text-slate-950">
+    <div
+      dir={rtl ? "rtl" : "ltr"}
+      lang={locale}
+      className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_40%,#f1f5f9_100%)] text-slate-950"
+    >
       {trackAnalytics ? (
         <PublicAnalyticsTracker businessId={business.id} enabled />
       ) : null}
       <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <Link href={buildHref("/")} className="text-lg font-semibold tracking-tight">
+          <Link href={localizedHref("/")} className="text-lg font-semibold tracking-tight">
             {business.name}
           </Link>
-          <nav className="flex flex-wrap gap-2 text-sm text-slate-600">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={buildHref(item.href)}
-                className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:text-slate-950"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <div className="flex flex-wrap items-center gap-3">
+            <nav className="flex flex-wrap gap-2 text-sm text-slate-600">
+              {baseNavItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={localizedHref(item.href)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:text-slate-950"
+                >
+                  {navCopy?.[item.key] ?? item.key}
+                </Link>
+              ))}
+            </nav>
+            {availableLocales.length ? (
+              <div className="flex flex-wrap gap-2">
+                {availableLocales.map((item) => {
+                  const active = item.code === locale;
+                  const href = `${currentUrl}${currentUrl.includes("?") ? "&" : "?"}lang=${encodeURIComponent(item.code)}`;
+                  return (
+                    <Link
+                      key={item.code}
+                      href={href}
+                      className={[
+                        "rounded-full border px-3 py-2 text-xs font-semibold transition",
+                        active
+                          ? "border-slate-950 bg-slate-950 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950",
+                      ].join(" ")}
+                    >
+                      {item.nativeLabel}
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -85,13 +144,9 @@ export function PanelSection({
         </p>
       ) : null}
       <div className="grid gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-          {title}
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
         {description ? (
-          <p className="max-w-3xl text-sm leading-7 text-slate-600">
-            {description}
-          </p>
+          <p className="max-w-3xl text-sm leading-7 text-slate-600">{description}</p>
         ) : null}
       </div>
       {children}
@@ -127,9 +182,7 @@ export function ContentCard({
         />
       </div>
       <div className="grid gap-3 p-5">
-        <h2 className="text-xl font-semibold tracking-tight text-slate-950">
-          {title}
-        </h2>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">{title}</h2>
         <p className="text-sm leading-7 text-slate-600">{description}</p>
       </div>
     </article>
@@ -183,3 +236,4 @@ export function EmptyState({
     </div>
   );
 }
+

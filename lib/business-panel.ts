@@ -8,6 +8,7 @@ import {
   updateBusinessRecord,
   type BusinessRecord,
 } from "@/lib/business";
+import { translateTexts } from "@/lib/ai-translation";
 import {
   deleteBusinessMediaAsset,
   listBusinessMediaAssets,
@@ -20,6 +21,13 @@ import {
   upsertBusinessCustomerFromReservation,
   type BusinessCustomerRecord,
 } from "@/lib/customers";
+import {
+  getSectionSeeds,
+  replaceBusinessTranslationDrafts,
+  type TranslationFieldKey,
+  type TranslationSection,
+} from "@/lib/content-translations";
+import { normalizeLanguageCode } from "@/lib/languages";
 import {
   createReservation as createReservationRecord,
   updateReservation as updateReservationRecord,
@@ -162,6 +170,54 @@ function uniqueSlug(base: string, existing: string[]) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function queueLocaleTranslationDrafts(
+  businessId: string,
+  panel: Pick<
+    BusinessPanelData,
+    "profile" | "services" | "vehicles" | "routes" | "blogs" | "seo"
+  >,
+  localeCode: string,
+) {
+  const normalizedLocale = normalizeLanguageCode(localeCode);
+
+  if (!normalizedLocale) {
+    return;
+  }
+
+  const seedsBySection = getSectionSeeds(panel);
+
+  for (const [section, seeds] of Object.entries(seedsBySection) as Array<
+    [keyof typeof seedsBySection, Array<{ section: TranslationSection; sourceId: string; fieldKey: TranslationFieldKey; sourceText: string }>]
+  >) {
+    if (!seeds.length) {
+      continue;
+    }
+
+    const translatedTexts = await translateTexts({
+      targetLocale: normalizedLocale,
+      sourceLocale: panel.seo.defaultLocale || "tr",
+      section: section as TranslationSection,
+      fieldKeys: seeds.map((seed) => seed.fieldKey),
+      texts: seeds.map((seed) => seed.sourceText),
+      context: section,
+    });
+
+    await replaceBusinessTranslationDrafts(
+      businessId,
+      normalizedLocale,
+      seeds.map((seed, index) => ({
+        localeCode: normalizedLocale,
+        section: seed.section,
+        sourceId: seed.sourceId,
+        fieldKey: seed.fieldKey,
+        sourceText: seed.sourceText,
+        translatedText: translatedTexts[index] ?? seed.sourceText,
+      })),
+      section as TranslationSection,
+    );
+  }
 }
 
 function emptyPanelState(businessId: string): DemoPanelState {
@@ -366,11 +422,57 @@ async function supabaseFetch(path: string, init?: RequestInit) {
 async function readRows(path: string) {
   const response = await supabaseFetch(path);
 
-  if (!response?.ok) {
+  if (!response) {
     return [];
   }
 
-  return (await response.json()) as Array<Record<string, unknown>>;
+  const text = await response.text().catch(() => "");
+  if (!text.trim()) {
+    if (!response.ok) {
+      throw new Error(
+        JSON.stringify({
+          code: "supabase_error",
+          message: "Supabase sorgusu başarısız.",
+          status: response.status,
+          rawText: "",
+        }),
+      );
+    }
+
+    return [];
+  }
+
+  let parsed: unknown = text;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    parsed = text;
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof parsed === "string"
+        ? parsed
+        : parsed && typeof parsed === "object"
+          ? String(
+              (parsed as Record<string, unknown>).message ??
+                (parsed as Record<string, unknown>).error ??
+                (parsed as Record<string, unknown>).details ??
+                (parsed as Record<string, unknown>).hint ??
+                text,
+            )
+          : text;
+    throw new Error(
+      JSON.stringify({
+        code: "supabase_error",
+        message,
+        status: response.status,
+        rawText: text,
+      }),
+    );
+  }
+
+  return Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
 }
 
 function mapProfile(row: Record<string, unknown>, businessId: string): BusinessProfileRecord {
@@ -837,6 +939,9 @@ export async function updateBusinessPanelSection(
         return await updateBusinessSeoDemo(businessId, {
           metaTitle: String(payload.metaTitle ?? ""),
           metaDescription: String(payload.metaDescription ?? ""),
+          defaultLocale: String(payload.defaultLocale ?? "tr"),
+          hreflangEnabled:
+            typeof payload.hreflangEnabled === "boolean" ? payload.hreflangEnabled : true,
         });
       case "locale":
         return await addBusinessLocaleDemo(businessId, {
@@ -1095,20 +1200,33 @@ export async function updateBusinessPanelSection(
       `/business_seo?business_id=eq.${encodeURIComponent(businessId)}&limit=1`,
     );
     const business = await getBusinessById(businessId);
+    const currentSeoDefaultLocale = String(existing[0]?.default_locale ?? "tr");
+    const currentSeoMetaTitle = String(existing[0]?.meta_title ?? "");
+    const currentSeoMetaDescription = String(existing[0]?.meta_description ?? "");
+    const currentSeoHreflangEnabled = Boolean(existing[0]?.hreflang_enabled ?? true);
 
     const response = await supabaseFetch(
       existing[0]
         ? `/business_seo?business_id=eq.${encodeURIComponent(businessId)}`
         : `/business_seo`,
-      {
+        {
         method: existing[0] ? "PATCH" : "POST",
         body: JSON.stringify({
           business_id: businessId,
-          meta_title: String(payload.metaTitle ?? "").trim(),
-          meta_description: String(payload.metaDescription ?? "").trim(),
+          meta_title: String(
+            payload.metaTitle ?? currentSeoMetaTitle,
+          ).trim(),
+          meta_description: String(
+            payload.metaDescription ?? currentSeoMetaDescription,
+          ).trim(),
           canonical_url: business?.domain ? `https://${business.domain}` : "",
-          default_locale: "tr",
-          hreflang_enabled: true,
+          default_locale:
+            String(payload.defaultLocale ?? currentSeoDefaultLocale).trim() ||
+              "tr",
+          hreflang_enabled:
+            typeof payload.hreflangEnabled === "boolean"
+              ? payload.hreflangEnabled
+                : currentSeoHreflangEnabled,
           updated_at: nowIso(),
         }),
       },
@@ -1315,6 +1433,8 @@ async function updateBusinessLocaleRecord(
 ) {
   const action = payload.action ?? (payload.recordId ? "update" : "create");
   const recordId = String(payload.recordId ?? "").trim();
+  const panel = await getBusinessPanelData(businessId);
+  const defaultLocale = String(panel.seo.defaultLocale ?? "").trim().toLowerCase();
   const rows = await readRows(
     `/business_locales?business_id=eq.${encodeURIComponent(businessId)}&select=id,code,name,active,published,translation_complete,created_at,updated_at&order=created_at.asc`,
   );
@@ -1325,6 +1445,10 @@ async function updateBusinessLocaleRecord(
   if (action === "delete") {
     if (!recordId) {
       throw new Error("Dil kaydi bulunamadi.");
+    }
+
+    if (String(current?.code ?? "").trim().toLowerCase() === defaultLocale) {
+      throw new Error("Varsayılan dil silinemez.");
     }
 
     const response = await supabaseFetch(
@@ -1353,6 +1477,13 @@ async function updateBusinessLocaleRecord(
     typeof payload.active === "boolean"
       ? payload.active
       : Boolean(current?.active ?? false);
+  const normalizedCode = code.toLowerCase();
+
+  if (!active && defaultLocale && normalizedCode === defaultLocale) {
+    throw new Error("Varsayılan dil kapatılamaz.");
+  }
+
+  const nextActive = normalizedCode === defaultLocale ? true : active;
   const published =
     typeof payload.published === "boolean"
       ? payload.published
@@ -1380,7 +1511,7 @@ async function updateBusinessLocaleRecord(
     business_id: businessId,
     code,
     name,
-    active,
+    active: nextActive,
     published,
     translation_complete: translationComplete,
     updated_at: nowIso(),
@@ -1409,7 +1540,12 @@ async function updateBusinessLocaleRecord(
     throw new Error(action === "create" ? "Dil kaydi olusturulamadi." : "Dil kaydi guncellenemedi.");
   }
 
-  return await getBusinessPanelData(businessId);
+  const updatedPanel = await getBusinessPanelData(businessId);
+  if (nextActive) {
+    await queueLocaleTranslationDrafts(businessId, updatedPanel, code);
+  }
+
+  return updatedPanel;
 }
 
 async function updateBusinessCollectionDemo(
@@ -1419,6 +1555,7 @@ async function updateBusinessCollectionDemo(
   const current = getDemoPanel(businessId);
   const action = payload.action ?? (payload.recordId ? "update" : "create");
   const recordId = String(payload.recordId ?? "").trim();
+  const defaultLocale = String(current.seo.defaultLocale ?? "").trim().toLowerCase();
 
   if (payload.section === "locale") {
     const code = String(payload.code ?? "").trim().toLowerCase();
@@ -1441,6 +1578,10 @@ async function updateBusinessCollectionDemo(
         throw new Error("Dil kaydi bulunamadi.");
       }
 
+      if (String(current.locales.find((entry) => entry.id === recordId)?.code ?? "").trim().toLowerCase() === defaultLocale) {
+        throw new Error("Varsayılan dil silinemez.");
+      }
+
       const nextLocales = current.locales.filter((entry) => entry.id !== recordId);
       if (nextLocales.length === current.locales.length) {
         throw new Error("Dil kaydi bulunamadi.");
@@ -1452,6 +1593,10 @@ async function updateBusinessCollectionDemo(
 
     if (!code) {
       throw new Error("Dil kodu gerekli.");
+    }
+
+    if (!active && defaultLocale && code === defaultLocale) {
+      throw new Error("Varsayılan dil kapatılamaz.");
     }
 
     const duplicate = current.locales.find(
@@ -1467,7 +1612,7 @@ async function updateBusinessCollectionDemo(
       businessId,
       code,
       name,
-      active,
+      active: code === defaultLocale ? true : active,
       published,
       translationComplete,
     };
@@ -1477,7 +1622,11 @@ async function updateBusinessCollectionDemo(
       : current.locales.map((entry) => (entry.id === recordId ? nextLocale : entry));
 
     persistDemoPanel(businessId, { locales });
-    return buildPanelResponse(getDemoPanel(businessId), await getBusinessById(businessId));
+    const updatedPanel = getDemoPanel(businessId);
+    if (nextLocale.active) {
+      await queueLocaleTranslationDrafts(businessId, updatedPanel, code);
+    }
+    return buildPanelResponse(updatedPanel, await getBusinessById(businessId));
   }
 
   const section = payload.section as "service" | "vehicle" | "route" | "blog";
@@ -1735,7 +1884,10 @@ async function addBusinessItemDemo(
 
 async function updateBusinessSeoDemo(
   businessId: string,
-  seo: Pick<BusinessSeoRecord, "metaTitle" | "metaDescription">,
+  seo: Pick<
+    BusinessSeoRecord,
+    "metaTitle" | "metaDescription" | "defaultLocale" | "hreflangEnabled"
+  >,
 ) {
   const currentBusiness = await getBusinessById(businessId);
   const current = getDemoPanel(businessId);
@@ -1747,8 +1899,9 @@ async function updateBusinessSeoDemo(
       canonicalUrl: currentBusiness?.domain
         ? `https://${currentBusiness.domain}`
         : current.seo.canonicalUrl,
-      defaultLocale: current.seo.defaultLocale || "tr",
-      hreflangEnabled: true,
+      defaultLocale: seo.defaultLocale || current.seo.defaultLocale || "tr",
+      hreflangEnabled:
+        typeof seo.hreflangEnabled === "boolean" ? seo.hreflangEnabled : true,
     },
   });
   const next = getDemoPanel(businessId);

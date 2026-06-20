@@ -9,6 +9,7 @@ import {
   PublicSiteShell,
 } from "@/components/public-site-shell";
 import { PublicQuoteForm } from "@/components/public-quote-form";
+import { DEFAULT_PUBLIC_COPY } from "@/lib/public-copy";
 import { getPublicSiteDataByBusinessId } from "@/lib/public-site";
 import {
   resolveBusinessMediaAltText,
@@ -750,7 +751,11 @@ function PreviewContact({
           title="Kisa iletisim formu"
           description="Gonderilen talepler requests tablosuna businessId ile kaydedilir."
         >
-          <PublicQuoteForm businessId={business.id} previewBusinessId={business.id} />
+          <PublicQuoteForm
+            businessId={business.id}
+            previewBusinessId={business.id}
+            copy={DEFAULT_PUBLIC_COPY.publicForm}
+          />
         </PanelSection>
       </section>
     </PublicSiteShell>
@@ -777,7 +782,11 @@ function PreviewQuote({
         title="Basit teklif talebi"
         description="Form gonderimi temel requests tablosuna businessId ile yazilir."
       >
-        <PublicQuoteForm businessId={business.id} previewBusinessId={business.id} />
+        <PublicQuoteForm
+          businessId={business.id}
+          previewBusinessId={business.id}
+          copy={DEFAULT_PUBLIC_COPY.publicForm}
+        />
       </PanelSection>
     </PublicSiteShell>
   );

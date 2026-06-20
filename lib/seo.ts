@@ -69,7 +69,7 @@ export function buildHreflangLinks(
   }
 
   return activeLocales.map((locale) => ({
-    href: `https://${baseDomain}${normalizedPath}`,
+    href: `https://${baseDomain}${normalizedPath}${normalizedPath.includes("?") ? "&" : "?"}lang=${encodeURIComponent(locale.code)}`,
     hrefLang: locale.code || seo.defaultLocale || "x-default",
   }));
 }

@@ -236,11 +236,21 @@ async function supabaseFetch(path: string, init?: RequestInit) {
 async function readRows(path: string) {
   const response = await supabaseFetch(path);
 
-  if (!response?.ok) {
+  if (!response) {
     return [];
   }
 
-  return (await response.json().catch(() => [])) as Array<Record<string, unknown>>;
+  const text = await response.text().catch(() => "");
+  if (!text.trim()) {
+    return response.ok ? [] : [];
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function supabaseRpc(name: string, body: Record<string, unknown>) {
@@ -345,7 +355,16 @@ export async function findUserByEmail(email: string) {
   );
 
   if (response?.ok) {
-    const rows = (await response.json()) as Array<Record<string, unknown>>;
+    const rowsText = await response.text().catch(() => "");
+    let rows: Array<Record<string, unknown>> = [];
+    if (rowsText.trim()) {
+      try {
+        const parsed = JSON.parse(rowsText) as unknown;
+        rows = Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
+      } catch {
+        rows = [];
+      }
+    }
     return rows[0] ? fromSupabaseUser(rows[0]) : null;
   }
 
@@ -718,7 +737,16 @@ export async function updateBusinessDomainRecord(
       : null;
 
     if (existing?.ok) {
-      const rows = (await existing.json()) as Array<Record<string, unknown>>;
+      const rowsText = await existing.text().catch(() => "");
+      let rows: Array<Record<string, unknown>> = [];
+      if (rowsText.trim()) {
+        try {
+          const parsed = JSON.parse(rowsText) as unknown;
+          rows = Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
+        } catch {
+          rows = [];
+        }
+      }
       if (rows[0] && String(rows[0].id ?? "") !== businessId) {
         throw new Error("Domain başka bir business tarafından kullanılıyor.");
       }
@@ -798,7 +826,16 @@ export async function updateBusinessOwnDomainRecord(
       : null;
 
     if (existing?.ok) {
-      const rows = (await existing.json()) as Array<Record<string, unknown>>;
+      const rowsText = await existing.text().catch(() => "");
+      let rows: Array<Record<string, unknown>> = [];
+      if (rowsText.trim()) {
+        try {
+          const parsed = JSON.parse(rowsText) as unknown;
+          rows = Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
+        } catch {
+          rows = [];
+        }
+      }
       if (rows[0] && String(rows[0].id ?? "") !== businessId) {
         throw new Error("Bu domain zaten kullanılıyor.");
       }

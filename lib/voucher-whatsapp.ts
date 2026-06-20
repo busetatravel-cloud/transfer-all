@@ -1,5 +1,6 @@
 import type { ReservationRecord } from "@/lib/reservation-types";
 import type { BusinessVoucherRecord } from "@/lib/vouchers";
+import type { VoucherCopy } from "@/lib/public-copy";
 
 export type VoucherWhatsAppTemplate = {
   body: string;
@@ -13,23 +14,25 @@ export function buildVoucherWhatsAppTemplate(
   options?: {
     voucherLink?: string;
     businessName?: string;
+    copy?: VoucherCopy;
   },
 ): VoucherWhatsAppTemplate {
   const voucherLink = options?.voucherLink?.trim() || "{{voucher_link}}";
   const businessName = options?.businessName?.trim() || voucher.businessName;
+  const copy = options?.copy;
   const travelDate = String(reservation.travelDate ?? "").trim() || "-";
   const travelTime = String(reservation.travelTime ?? "").trim() || "-";
   const origin = String(reservation.origin ?? "").trim() || "-";
   const destination = String(reservation.destination ?? "").trim() || "-";
 
   const body = [
-    `Merhaba ${reservation.customerName},`,
+    `${copy?.whatsappGreeting ?? "Merhaba"} ${reservation.customerName},`,
     "",
-    `${businessName} rezervasyonunuz hazır.`,
-    `Rezervasyon No: ${voucher.documentNo}`,
-    `Tarih/Saat: ${travelDate} ${travelTime}`,
-    `Nereden/Nereye: ${origin} → ${destination}`,
-    `Voucher: ${voucherLink}`,
+    `${businessName} ${copy?.whatsappReady ?? "rezervasyonunuz hazır."}`,
+    `${copy?.whatsappReservationNo ?? "Rezervasyon No"}: ${voucher.documentNo}`,
+    `${copy?.whatsappDateTime ?? "Tarih/Saat"}: ${travelDate} ${travelTime}`,
+    `${copy?.whatsappOriginDestination ?? "Nereden/Nereye"}: ${origin} → ${destination}`,
+    `${copy?.whatsappVoucher ?? "Voucher"}: ${voucherLink}`,
   ].join("\n");
 
   return {
@@ -38,3 +41,4 @@ export function buildVoucherWhatsAppTemplate(
     recipient: reservation.phone?.trim() || "",
   };
 }
+

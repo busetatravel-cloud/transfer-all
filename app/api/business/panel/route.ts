@@ -228,6 +228,8 @@ export async function PATCH(request: Request) {
                       recordId: toStringValue(body?.recordId) || undefined,
                       metaTitle: toStringValue(body?.metaTitle),
                       metaDescription: toStringValue(body?.metaDescription),
+                      defaultLocale: toStringValue(body?.defaultLocale),
+                      hreflangEnabled: toBooleanValue(body?.hreflangEnabled),
                     }
                   : {
                       section,

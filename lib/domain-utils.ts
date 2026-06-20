@@ -2,17 +2,28 @@ export type DomainStatus =
   | "pending"
   | "dns_detected"
   | "verified"
+  | "ssl_ready"
   | "active"
   | "failed";
 
 export type DomainSslStatus = "pending" | "issued" | "active" | "failed";
 
-export type DomainProvider = "vercel" | "cloudflare" | "custom";
+export type DomainProvider =
+  | "vercel"
+  | "cloudflare"
+  | "godaddy"
+  | "namecheap"
+  | "turhost"
+  | "natro"
+  | "isimtescil"
+  | "hostinger"
+  | "custom";
 
 export const DOMAIN_STATUS_OPTIONS: DomainStatus[] = [
   "pending",
   "dns_detected",
   "verified",
+  "ssl_ready",
   "active",
   "failed",
 ];
@@ -25,22 +36,52 @@ export const DOMAIN_PROVIDER_OPTIONS: Array<{
   {
     value: "vercel",
     label: "Vercel",
-    description: "Vercel baglantisi icin yonlendirme ve DNS kontrolu.",
+    description: "Vercel custom domain akışı için önerilen kayıtlar.",
   },
   {
     value: "cloudflare",
     label: "Cloudflare",
-    description: "Cloudflare DNS uzerinden kontrollu baglama akisi.",
+    description: "Cloudflare DNS üzerinden yöneten ekipler için.",
+  },
+  {
+    value: "godaddy",
+    label: "GoDaddy",
+    description: "GoDaddy DNS paneli için hızlı kurulum rehberi.",
+  },
+  {
+    value: "namecheap",
+    label: "Namecheap",
+    description: "Namecheap alan adı yönetimi için yönlendirme akışı.",
+  },
+  {
+    value: "turhost",
+    label: "Turhost",
+    description: "Turhost DNS paneli için adım adım rehber.",
+  },
+  {
+    value: "natro",
+    label: "Natro",
+    description: "Natro kullanıcıları için profesyonel yönlendirme.",
+  },
+  {
+    value: "isimtescil",
+    label: "İsimtescil",
+    description: "İsimtescil DNS ekranı için hızlı kurulum.",
+  },
+  {
+    value: "hostinger",
+    label: "Hostinger",
+    description: "Hostinger DNS yönlendirme akışı.",
   },
   {
     value: "custom",
     label: "Custom",
-    description: "Kendi DNS saglayiciniz icin genel baglama akisi.",
+    description: "Özel DNS sağlayıcısı için genel onboarding.",
   },
 ];
 
 export type DomainDnsRecord = {
-  type: string;
+  type: "A" | "CNAME" | "TXT";
   host: string;
   value: string;
   note: string;
@@ -52,6 +93,23 @@ export type DomainAdapter = {
   guide: string[];
   records: DomainDnsRecord[];
 };
+
+function normalizeHost(hostname: string) {
+  return hostname.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+}
+
+function isLikelyRootDomain(hostname: string) {
+  const parts = normalizeHost(hostname).split(".").filter(Boolean);
+  return parts.length <= 2;
+}
+
+function getApexHost(hostname: string) {
+  return isLikelyRootDomain(hostname) ? "@" : hostname;
+}
+
+function getSubdomainHost(hostname: string) {
+  return isLikelyRootDomain(hostname) ? `www.${normalizeHost(hostname)}` : hostname;
+}
 
 export function buildDomainVerificationToken(seed?: string | null) {
   const normalized = String(seed ?? "").trim();
@@ -67,14 +125,31 @@ export function buildDomainVerificationToken(seed?: string | null) {
   return `verify-${Math.random().toString(36).slice(2, 14)}`;
 }
 
-export function formatDomainStatusLabel(status: string | null | undefined) {
-  const normalized = String(status ?? "").trim().toLowerCase();
+export function getDomainStepIndex(status: string | null | undefined) {
+  switch (String(status ?? "").trim().toLowerCase()) {
+    case "pending":
+      return 0;
+    case "dns_detected":
+      return 1;
+    case "verified":
+      return 2;
+    case "ssl_ready":
+      return 3;
+    case "active":
+      return 4;
+    default:
+      return -1;
+  }
+}
 
-  switch (normalized) {
+export function formatDomainStatusLabel(status: string | null | undefined) {
+  switch (String(status ?? "").trim().toLowerCase()) {
     case "dns_detected":
       return "DNS algılandı";
     case "verified":
       return "Doğrulandı";
+    case "ssl_ready":
+      return "SSL hazır";
     case "active":
       return "Aktif";
     case "failed":
@@ -86,9 +161,7 @@ export function formatDomainStatusLabel(status: string | null | undefined) {
 }
 
 export function formatSslStatusLabel(status: string | null | undefined) {
-  const normalized = String(status ?? "").trim().toLowerCase();
-
-  switch (normalized) {
+  switch (String(status ?? "").trim().toLowerCase()) {
     case "issued":
       return "Sertifika hazır";
     case "active":
@@ -101,82 +174,233 @@ export function formatSslStatusLabel(status: string | null | undefined) {
   }
 }
 
+function buildProviderGuide(provider: DomainProvider, hostname: string, token: string) {
+  const apexHost = getApexHost(hostname);
+  const subHost = getSubdomainHost(hostname);
+
+  switch (provider) {
+    case "cloudflare":
+      return {
+        guide: [
+          "Domaini Cloudflare DNS ekranına ekleyin.",
+          `A kaydını ${apexHost} için tanımlayın.`,
+          `CNAME kaydını ${subHost} için oluşturun.`,
+          `TXT doğrulama kaydına ${token} değerini girin.`,
+        ],
+      };
+    case "godaddy":
+      return {
+        guide: [
+          "GoDaddy DNS yönetiminden alan adını açın.",
+          `A kaydını ${apexHost} için ekleyin.`,
+          `CNAME kaydını ${subHost} için ekleyin.`,
+          `TXT doğrulama kaydına ${token} değerini yazın.`,
+        ],
+      };
+    case "namecheap":
+      return {
+        guide: [
+          "Namecheap Advanced DNS bölümünü açın.",
+          `A kaydını ${apexHost} için tanımlayın.`,
+          `CNAME kaydını ${subHost} için oluşturun.`,
+          `TXT kaydına ${token} doğrulama tokenini ekleyin.`,
+        ],
+      };
+    case "turhost":
+      return {
+        guide: [
+          "Turhost DNS panelinden kayıt ekleyin.",
+          `A kaydını ${apexHost} için oluşturun.`,
+          `CNAME kaydını ${subHost} için yönlendirin.`,
+          `TXT doğrulama kaydına ${token} değerini girin.`,
+        ],
+      };
+    case "natro":
+      return {
+        guide: [
+          "Natro DNS yönetim alanına giriş yapın.",
+          `A kaydını ${apexHost} için ekleyin.`,
+          `CNAME kaydını ${subHost} için ekleyin.`,
+          `TXT doğrulama alanına ${token} ekleyin.`,
+        ],
+      };
+    case "isimtescil":
+      return {
+        guide: [
+          "İsimtescil DNS yönetim ekranını açın.",
+          `A kaydını ${apexHost} için oluşturun.`,
+          `CNAME kaydını ${subHost} için oluşturun.`,
+          `TXT doğrulama kaydını ${token} ile doldurun.`,
+        ],
+      };
+    case "hostinger":
+      return {
+        guide: [
+          "Hostinger DNS zone yönetimini açın.",
+          `A kaydını ${apexHost} için tanımlayın.`,
+          `CNAME kaydını ${subHost} için oluşturun.`,
+          `TXT doğrulama tokenini ${token} ile girin.`,
+        ],
+      };
+    case "vercel":
+    case "custom":
+    default:
+      return {
+        guide: [
+          "DNS yönetim ekranında domain kaydını açın.",
+          `Root domain için A kaydını ${apexHost} hedefi ile ekleyin.`,
+          `Subdomain için CNAME kaydını ${subHost} hedefi ile ekleyin.`,
+          `TXT doğrulama kaydına ${token} tokenini ekleyin.`,
+        ],
+      };
+  }
+}
+
 export function buildDomainAdapters(
   hostname: string,
   verificationToken: string,
 ): DomainAdapter[] {
-  const safeHostname = hostname.trim() || "firma.com";
-  const safeToken = verificationToken.trim() || "verification-token";
+  const safeHostname = normalizeHost(hostname) || "firma.com";
+  const safeToken = buildDomainVerificationToken(verificationToken);
+  const apexHost = getApexHost(safeHostname);
+  const subHost = getSubdomainHost(safeHostname);
 
   return [
     {
       provider: "vercel",
       label: "Vercel",
-      guide: [
-        "Project settings içinden custom domain ekleyin.",
-        "DNS tarafında CNAME kaydı oluşturun.",
-        "Doğrulama sonrası bu panelde durumu kontrol edin.",
-      ],
+      guide: buildProviderGuide("vercel", safeHostname, safeToken).guide,
       records: [
         {
+          type: "A",
+          host: apexHost,
+          value: "76.76.21.21",
+          note: "Root domain için A kaydı",
+        },
+        {
           type: "CNAME",
-          host: safeHostname,
+          host: subHost,
           value: "cname.vercel-dns.com",
-          note: "Ana domain için CNAME yönlendirmesi",
+          note: "Subdomain için CNAME",
         },
         {
           type: "TXT",
-          host: `_verify.${safeHostname}`,
+          host: `_verify.${safeHostname.replace(/^www\./i, "")}`,
           value: safeToken,
-          note: "Sahiplik doğrulama tokeni",
+          note: "TXT doğrulama tokeni",
         },
       ],
     },
     {
       provider: "cloudflare",
       label: "Cloudflare",
-      guide: [
-        "DNS ekranında domain kaydını ekleyin.",
-        "Proxy durumunu gerekirse kapalı tutun.",
-        "Doğrulama için TXT token değerini kullanın.",
-      ],
+      guide: buildProviderGuide("cloudflare", safeHostname, safeToken).guide,
       records: [
         {
+          type: "A",
+          host: apexHost,
+          value: "76.76.21.21",
+          note: "Root domain için A kaydı",
+        },
+        {
           type: "CNAME",
-          host: safeHostname,
-          value: "origin.busetatransfer.com",
-          note: "Cloudflare yönlendirme kaydı",
+          host: subHost,
+          value: "cname.vercel-dns.com",
+          note: "Subdomain için CNAME",
         },
         {
           type: "TXT",
-          host: `_verify.${safeHostname}`,
+          host: `_verify.${safeHostname.replace(/^www\./i, "")}`,
           value: safeToken,
-          note: "Doğrulama tokeni",
+          note: "TXT doğrulama tokeni",
         },
+      ],
+    },
+    {
+      provider: "godaddy",
+      label: "GoDaddy",
+      guide: buildProviderGuide("godaddy", safeHostname, safeToken).guide,
+      records: [
+        { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
+        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
+      ],
+    },
+    {
+      provider: "namecheap",
+      label: "Namecheap",
+      guide: buildProviderGuide("namecheap", safeHostname, safeToken).guide,
+      records: [
+        { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
+        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
+      ],
+    },
+    {
+      provider: "turhost",
+      label: "Turhost",
+      guide: buildProviderGuide("turhost", safeHostname, safeToken).guide,
+      records: [
+        { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
+        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
+      ],
+    },
+    {
+      provider: "natro",
+      label: "Natro",
+      guide: buildProviderGuide("natro", safeHostname, safeToken).guide,
+      records: [
+        { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
+        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
+      ],
+    },
+    {
+      provider: "isimtescil",
+      label: "İsimtescil",
+      guide: buildProviderGuide("isimtescil", safeHostname, safeToken).guide,
+      records: [
+        { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
+        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
+      ],
+    },
+    {
+      provider: "hostinger",
+      label: "Hostinger",
+      guide: buildProviderGuide("hostinger", safeHostname, safeToken).guide,
+      records: [
+        { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
+        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
     {
       provider: "custom",
       label: "Custom",
-      guide: [
-        "Kendi DNS sağlayıcınızda domain kaydını oluşturun.",
-        "Domaini public siteye yönlendirin.",
-        "Bu panel şimdilik DNS sonucu yerine hazır rehber gösterir.",
-      ],
+      guide: buildProviderGuide("custom", safeHostname, safeToken).guide,
       records: [
         {
+          type: "A",
+          host: apexHost,
+          value: "76.76.21.21",
+          note: "Root domain için A kaydı",
+        },
+        {
           type: "CNAME",
-          host: safeHostname,
-          value: "public.busetatransfer.com",
-          note: "Genel public hedef",
+          host: subHost,
+          value: "cname.vercel-dns.com",
+          note: "Subdomain için CNAME",
         },
         {
           type: "TXT",
-          host: `_verify.${safeHostname}`,
+          host: `_verify.${safeHostname.replace(/^www\./i, "")}`,
           value: safeToken,
-          note: "Doğrulama tokeni",
+          note: "TXT doğrulama tokeni",
         },
       ],
     },
   ];
 }
+

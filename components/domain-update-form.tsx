@@ -76,6 +76,7 @@ export function DomainUpdateForm({ businessId, domain, domainStatus }: Props) {
             <option value="pending">pending</option>
             <option value="dns_detected">dns_detected</option>
             <option value="verified">verified</option>
+            <option value="ssl_ready">ssl_ready</option>
             <option value="active">active</option>
             <option value="failed">failed</option>
           </select>

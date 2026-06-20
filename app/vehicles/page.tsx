@@ -7,54 +7,72 @@ import {
   PanelSection,
   PublicSiteShell,
 } from "@/components/public-site-shell";
-import { getPublicSiteDataFromRequest } from "@/lib/public-site";
+import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import { resolveBusinessMediaSourceUrl } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const panel = await getPublicSiteDataFromRequest();
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     return { title: "Araclar", description: "Arac listesi." };
   }
 
   return buildBusinessSeoMetadata({
-    business: panel.business,
-    seo: panel.seo,
-    locales: panel.locales,
+    business: site.panel.business,
+    seo: site.panel.seo,
+    locales: site.panel.locales,
     pathname: "/vehicles",
-    title: `${panel.business.name} | Araclar`,
-    description: panel.seo.metaDescription || "Business arac listesi",
+    title: `${site.panel.business.name} | Araclar`,
+    description: site.panel.seo.metaDescription || "Business arac listesi",
   });
 }
 
-export default async function VehiclesPage() {
-  const panel = await getPublicSiteDataFromRequest();
+export default async function VehiclesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}) {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     notFound();
   }
 
+  const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
+
   return (
-    <PublicSiteShell business={panel.business}>
+    <PublicSiteShell
+      business={site.panel.business}
+      locale={site.locale}
+      locales={site.availableLocales}
+      currentPath="/vehicles"
+      copy={site.copy}
+    >
       <PanelSection
         eyebrow="Araclar"
         title="Business arac listesi"
-        description="Arac kayitlari ayni domain ve ayni businessId ile gösterilir."
+        description="Arac kayitlari ayni businessId ile public sitede gösterilir."
       >
-        {panel.vehicles.length ? (
+        {site.panel.vehicles.length ? (
           <CardGrid>
-            {panel.vehicles.map((item) => (
+            {site.panel.vehicles.map((item) => (
               <ContentCard
                 key={item.id}
-                href={`/vehicles/${item.slug || item.id}`}
+                href={withLocale(`/vehicles/${item.slug || item.id}`)}
                 title={item.title}
                 description={item.description}
                 imageAlt={item.title}
-                imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "vehicle_cover")}
+                imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "vehicle_cover")}
               />
             ))}
           </CardGrid>

@@ -2,44 +2,60 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PanelSection, PublicSiteShell } from "@/components/public-site-shell";
 import { PublicQuoteForm } from "@/components/public-quote-form";
-import { getPublicSiteDataFromRequest } from "@/lib/public-site";
+import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const panel = await getPublicSiteDataFromRequest();
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     return { title: "Teklif al", description: "Teklif formu." };
   }
 
   return buildBusinessSeoMetadata({
-    business: panel.business,
-    seo: panel.seo,
-    locales: panel.locales,
+    business: site.panel.business,
+    seo: site.panel.seo,
+    locales: site.panel.locales,
     pathname: "/quote",
-    title: `${panel.business.name} | Teklif al`,
-    description: panel.seo.metaDescription || "Business teklif formu",
+    title: `${site.panel.business.name} | Teklif al`,
+    description: site.panel.seo.metaDescription || "Business teklif formu",
   });
 }
 
-export default async function QuotePage() {
-  const panel = await getPublicSiteDataFromRequest();
+export default async function QuotePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}) {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     notFound();
   }
 
   return (
-    <PublicSiteShell business={panel.business}>
+    <PublicSiteShell
+      business={site.panel.business}
+      locale={site.locale}
+      locales={site.availableLocales}
+      currentPath="/quote"
+      copy={site.copy}
+    >
       <PanelSection
-        eyebrow="Teklif al"
-        title="Basit teklif talebi"
-        description="Form gonderimi temel requests tablosuna businessId ile yazilir."
+        eyebrow={site.copy.publicForm.title}
+        title={site.copy.publicForm.title}
+        description={site.copy.publicForm.description}
       >
-        <PublicQuoteForm businessId={panel.business.id} />
+        <PublicQuoteForm businessId={site.panel.business.id} copy={site.copy.publicForm} />
       </PanelSection>
     </PublicSiteShell>
   );

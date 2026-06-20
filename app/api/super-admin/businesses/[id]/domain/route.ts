@@ -48,6 +48,7 @@ export async function PATCH(
         | "pending"
         | "dns_detected"
         | "verified"
+        | "ssl_ready"
         | "active"
         | "failed"
         | undefined) ?? "pending",

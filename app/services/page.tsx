@@ -7,54 +7,72 @@ import {
   PanelSection,
   PublicSiteShell,
 } from "@/components/public-site-shell";
-import { getPublicSiteDataFromRequest } from "@/lib/public-site";
+import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import { resolveBusinessMediaSourceUrl } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const panel = await getPublicSiteDataFromRequest();
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     return { title: "Hizmetler", description: "Hizmet listesi." };
   }
 
   return buildBusinessSeoMetadata({
-    business: panel.business,
-    seo: panel.seo,
-    locales: panel.locales,
+    business: site.panel.business,
+    seo: site.panel.seo,
+    locales: site.panel.locales,
     pathname: "/services",
-    title: `${panel.business.name} | Hizmetler`,
-    description: panel.seo.metaDescription || "Business hizmet listesi",
+    title: `${site.panel.business.name} | Hizmetler`,
+    description: site.panel.seo.metaDescription || "Business hizmet listesi",
   });
 }
 
-export default async function ServicesPage() {
-  const panel = await getPublicSiteDataFromRequest();
+export default async function ServicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}) {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     notFound();
   }
 
+  const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
+
   return (
-    <PublicSiteShell business={panel.business}>
+    <PublicSiteShell
+      business={site.panel.business}
+      locale={site.locale}
+      locales={site.availableLocales}
+      currentPath="/services"
+      copy={site.copy}
+    >
       <PanelSection
         eyebrow="Hizmetler"
         title="Business hizmet listesi"
         description="Ayni businessId icindeki hizmetler public sitede listelenir."
       >
-        {panel.services.length ? (
+        {site.panel.services.length ? (
           <CardGrid>
-            {panel.services.map((item) => (
+            {site.panel.services.map((item) => (
               <ContentCard
                 key={item.id}
-                href={`/services/${item.slug || item.id}`}
+                href={withLocale(`/services/${item.slug || item.id}`)}
                 title={item.title}
                 description={item.description}
                 imageAlt={item.title}
-                imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "service_cover")}
+                imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "service_cover")}
               />
             ))}
           </CardGrid>

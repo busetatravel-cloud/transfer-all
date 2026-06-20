@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import type { PublicFormCopy } from "@/lib/public-copy";
 
 type SaveState = {
   status: "idle" | "saving" | "saved" | "error";
@@ -10,9 +11,11 @@ type SaveState = {
 export function PublicQuoteForm({
   businessId,
   previewBusinessId,
+  copy,
 }: {
   businessId: string;
   previewBusinessId?: string;
+  copy: PublicFormCopy;
 }) {
   const [state, setState] = useState<SaveState>({
     status: "idle",
@@ -25,7 +28,7 @@ export function PublicQuoteForm({
     const formData = new FormData(form);
     const body = Object.fromEntries(formData.entries());
 
-    setState({ status: "saving", message: "Gönderiliyor..." });
+    setState({ status: "saving", message: copy.sending });
 
     const response = await fetch("/api/public/quote", {
       method: "POST",
@@ -43,37 +46,40 @@ export function PublicQuoteForm({
         | null;
       setState({
         status: "error",
-        message: payload?.error ?? "Gönderim başarısız.",
+        message: payload?.error ?? copy.error,
       });
       return;
     }
 
-    setState({ status: "saved", message: "Talebiniz alındı." });
+    setState({ status: "saved", message: copy.success });
     form.reset();
   }
 
   return (
-    <form className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm" onSubmit={submit}>
+    <form
+      className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
+      onSubmit={submit}
+    >
       <input type="hidden" name="businessId" value={businessId} />
       {previewBusinessId ? (
         <input type="hidden" name="previewBusinessId" value={previewBusinessId} />
       ) : null}
       <Status state={state} pending={state.status === "saving"} />
       <div className="grid gap-3 md:grid-cols-2">
-        <Field name="customerName" label="Ad Soyad" />
-        <Field name="phone" label="Telefon" />
+        <Field name="customerName" label={copy.customerName} />
+        <Field name="phone" label={copy.phone} />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <Field name="email" label="E-posta" type="email" />
+        <Field name="email" label={copy.email} type="email" />
         <div />
       </div>
-      <Field name="message" label="Mesaj" as="textarea" rows={5} />
+      <Field name="message" label={copy.message} as="textarea" rows={5} />
       <button
         className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={state.status === "saving"}
         type="submit"
       >
-        Teklif gönder
+        {copy.submit}
       </button>
     </form>
   );
@@ -125,3 +131,4 @@ function Status({ state, pending }: { state: SaveState; pending: boolean }) {
 
   return <div className={`rounded-2xl border px-4 py-3 text-sm ${tone}`}>{state.message}</div>;
 }
+

@@ -1,5 +1,6 @@
 import type { ReservationRecord } from "@/lib/reservation-types";
 import type { BusinessVoucherRecord } from "@/lib/vouchers";
+import type { VoucherCopy } from "@/lib/public-copy";
 
 export type VoucherMailTemplate = {
   subject: string;
@@ -28,24 +29,26 @@ export function buildVoucherMailTemplate(
   options?: {
     voucherLink?: string;
     businessName?: string;
+    copy?: VoucherCopy;
   },
 ): VoucherMailTemplate {
   const voucherLink = options?.voucherLink?.trim() || buildVoucherLinkPlaceholder(voucher.id);
   const businessName = options?.businessName?.trim() || voucher.businessName;
-  const subject = `Rezervasyon Onayı - ${reservation.customerName}`;
+  const copy = options?.copy;
+  const subject = `${copy?.mailSubject ?? "Rezervasyon Onayı"} - ${reservation.customerName}`;
   const body = [
-    renderLine("Müşteri", reservation.customerName),
-    renderLine("Rezervasyon No", voucher.documentNo),
+    renderLine(copy?.mailGreeting ?? "Merhaba", reservation.customerName),
+    renderLine(copy?.mailReservationNo ?? "Rezervasyon No", voucher.documentNo),
     renderLine(
-      "Tarih/Saat",
+      copy?.mailDateTime ?? "Tarih/Saat",
       `${renderValue(reservation.travelDate)} ${renderValue(reservation.travelTime, "")}`.trim(),
     ),
-    renderLine("Telefon", renderValue(reservation.phone)),
-    renderLine("Nereden", renderValue(reservation.origin)),
-    renderLine("Nereye", renderValue(reservation.destination)),
-    renderLine("Voucher Link", voucherLink),
+    renderLine(copy?.mailPhone ?? "Telefon", renderValue(reservation.phone)),
+    renderLine(copy?.mailOrigin ?? "Nereden", renderValue(reservation.origin)),
+    renderLine(copy?.mailDestination ?? "Nereye", renderValue(reservation.destination)),
+    renderLine(copy?.mailVoucherLink ?? "Voucher Link", voucherLink),
     "",
-    "Saygılarımızla",
+    copy?.mailClosing ?? "Saygılarımızla",
     businessName,
   ].join("\n");
 
@@ -56,3 +59,4 @@ export function buildVoucherMailTemplate(
     recipient: reservation.email?.trim() || "",
   };
 }
+

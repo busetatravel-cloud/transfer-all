@@ -13,6 +13,11 @@ import {
   type BusinessServiceRecord,
   type BusinessVehicleRecord,
 } from "@/lib/business-panel";
+import {
+  readBusinessTranslationDrafts,
+  readBusinessPublishedTranslationsByRevision,
+  replacePublishedTranslationsForRevision,
+} from "@/lib/content-translations";
 import type { BusinessMediaAssetRecord } from "@/lib/media";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
@@ -575,6 +580,13 @@ async function insertPublishedSnapshot(businessId: string, revisionId: string, p
       }),
     ),
   ]);
+
+  const drafts = await readBusinessTranslationDrafts(businessId);
+  await replacePublishedTranslationsForRevision(
+    businessId,
+    revisionId,
+    drafts.filter((item) => item.localeCode && item.translatedText.trim()),
+  );
 }
 
 async function createPublishedRevision(
@@ -609,6 +621,8 @@ async function createPublishedRevision(
     };
 
     storeDemoSnapshot(businessId, revision, panel);
+    const draftTranslations = await readBusinessTranslationDrafts(businessId);
+    await replacePublishedTranslationsForRevision(businessId, revision.id, draftTranslations);
     return revision;
   }
 
@@ -864,6 +878,26 @@ export async function getPublishingCenterData(
   };
 }
 
+export async function getLatestPublishedRevisionForBusiness(businessId: string) {
+  const safeBusinessId = businessId.trim();
+
+  if (!safeBusinessId) {
+    return null;
+  }
+
+  if (!hasSupabaseConnection()) {
+    const state = ensureDemoState(safeBusinessId);
+    return (
+      state.revisions
+        .slice()
+        .sort((left, right) => right.version - left.version || right.createdAt.localeCompare(left.createdAt))
+        .find((item) => item.status === "published") ?? null
+    );
+  }
+
+  return readLatestPublishedRevision(safeBusinessId);
+}
+
 export async function getPublishedBusinessPanelDataByBusinessId(
   businessId: string,
 ): Promise<BusinessPanelData | null> {
@@ -886,4 +920,22 @@ export async function getPublishedBusinessPanelDataByBusinessId(
   }
 
   return readPublishedPanelFromRevision(safeBusinessId, revision.id);
+}
+
+export async function getPublishedBusinessTranslationsByBusinessId(
+  businessId: string,
+) {
+  const safeBusinessId = businessId.trim();
+
+  if (!safeBusinessId) {
+    return [];
+  }
+
+  const revision = await getLatestPublishedRevisionForBusiness(safeBusinessId);
+
+  if (!revision) {
+    return [];
+  }
+
+  return readBusinessPublishedTranslationsByRevision(safeBusinessId, revision.id);
 }

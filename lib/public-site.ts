@@ -7,6 +7,7 @@ import {
   getPublishedBusinessPanelDataByBusinessId,
   ensureBusinessPublicationSeeded,
 } from "@/lib/publishing";
+import { getLocalizedPublicSiteData, type PublicSiteLocalization } from "@/lib/public-localization";
 import { isPlatformHost, normalizeHost } from "@/lib/platform";
 
 export async function getPublicSiteDataByHost(
@@ -32,6 +33,13 @@ export async function getPublicSiteDataFromRequest() {
   const headerStore = await headers();
   const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
   return getPublicSiteDataByHost(host);
+}
+
+export async function getLocalizedPublicSiteDataFromRequest(
+  requestedLocale?: string | null,
+): Promise<PublicSiteLocalization | null> {
+  const panel = await getPublicSiteDataFromRequest();
+  return getLocalizedPublicSiteData(panel, requestedLocale);
 }
 
 export async function getPublicSiteDataByBusinessId(

@@ -7,54 +7,72 @@ import {
   PanelSection,
   PublicSiteShell,
 } from "@/components/public-site-shell";
-import { getPublicSiteDataFromRequest } from "@/lib/public-site";
+import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import { resolveBusinessMediaSourceUrl } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const panel = await getPublicSiteDataFromRequest();
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     return { title: "Rotalar", description: "Rota listesi." };
   }
 
   return buildBusinessSeoMetadata({
-    business: panel.business,
-    seo: panel.seo,
-    locales: panel.locales,
+    business: site.panel.business,
+    seo: site.panel.seo,
+    locales: site.panel.locales,
     pathname: "/routes",
-    title: `${panel.business.name} | Rotalar`,
-    description: panel.seo.metaDescription || "Business rota listesi",
+    title: `${site.panel.business.name} | Rotalar`,
+    description: site.panel.seo.metaDescription || "Business rota listesi",
   });
 }
 
-export default async function RoutesPage() {
-  const panel = await getPublicSiteDataFromRequest();
+export default async function RoutesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}) {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     notFound();
   }
 
+  const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
+
   return (
-    <PublicSiteShell business={panel.business}>
+    <PublicSiteShell
+      business={site.panel.business}
+      locale={site.locale}
+      locales={site.availableLocales}
+      currentPath="/routes"
+      copy={site.copy}
+    >
       <PanelSection
         eyebrow="Rotalar"
         title="Business rota listesi"
         description="Rota verisi ayni businessId ile public domaine baglanir."
       >
-        {panel.routes.length ? (
+        {site.panel.routes.length ? (
           <CardGrid>
-            {panel.routes.map((item) => (
+            {site.panel.routes.map((item) => (
               <ContentCard
                 key={item.id}
-                href={`/routes/${item.slug || item.id}`}
+                href={withLocale(`/routes/${item.slug || item.id}`)}
                 title={item.title}
                 description={item.description}
                 imageAlt={item.title}
-                imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "route_cover")}
+                imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "route_cover")}
               />
             ))}
           </CardGrid>

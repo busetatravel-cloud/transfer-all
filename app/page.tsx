@@ -11,7 +11,10 @@ import {
   PublicSiteShell,
 } from "@/components/public-site-shell";
 import { getSession } from "@/lib/auth";
-import { getPublicSiteDataByHost } from "@/lib/public-site";
+import {
+  getLocalizedPublicSiteDataFromRequest,
+  getPublicSiteDataByHost,
+} from "@/lib/public-site";
 import { getLandingPath, isPlatformHost, normalizeHost } from "@/lib/platform";
 import {
   resolveBusinessMediaAltText,
@@ -22,15 +25,15 @@ import { buildBusinessSeoMetadata } from "@/lib/seo";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const headerStore = await headers();
-  const host = normalizeHost(
-    headerStore.get("x-forwarded-host") ?? headerStore.get("host"),
-  );
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  const panel = await getPublicSiteDataByHost(host);
-
-  if (!panel?.business) {
+  if (!site?.panel.business) {
     return {
       title: "Transfer SaaS",
       description: "Custom domain destekli transfer platformu.",
@@ -38,16 +41,20 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   return buildBusinessSeoMetadata({
-    business: panel.business,
-    seo: panel.seo,
-    locales: panel.locales,
+    business: site.panel.business,
+    seo: site.panel.seo,
+    locales: site.panel.locales,
     pathname: "/",
-    title: panel.seo.metaTitle || panel.business.name,
-    description: panel.seo.metaDescription || panel.profile.heroSubtitle || "",
+    title: site.panel.seo.metaTitle || site.panel.business.name,
+    description: site.panel.seo.metaDescription || site.panel.profile.heroSubtitle || "",
   });
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>;
+}) {
   const headerStore = await headers();
   const host = normalizeHost(
     headerStore.get("x-forwarded-host") ?? headerStore.get("host"),
@@ -59,15 +66,24 @@ export default async function HomePage() {
   }
 
   const panel = await getPublicSiteDataByHost(host);
+  const { lang } = await searchParams;
+  const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
-  if (!panel?.business) {
+  if (!panel?.business || !site?.panel.business) {
     notFound();
   }
 
-  const business = panel.business;
+  const business = site.panel.business;
+  const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
 
   return (
-    <PublicSiteShell business={business}>
+    <PublicSiteShell
+      business={business}
+      locale={site.locale}
+      locales={site.availableLocales}
+      currentPath="/"
+      copy={site.copy}
+    >
       <section className="grid gap-8">
         <div className="grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">
           <div className="grid content-start gap-4">
@@ -75,24 +91,24 @@ export default async function HomePage() {
               {business.domain ?? "Custom domain"}
             </p>
             <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-slate-950 lg:text-6xl">
-              {panel.profile.heroTitle || business.name}
+              {site.panel.profile.heroTitle || business.name}
             </h1>
             <p className="max-w-2xl text-base leading-8 text-slate-600">
-              {panel.profile.heroSubtitle ||
+              {site.panel.profile.heroSubtitle ||
                 "Business icin ozel public site. Menuler ve icerikler ayni domain icinde kalir."}
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Link
                 className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-                href="/quote"
+                href={withLocale("/quote")}
               >
-                {panel.profile.heroButtonText || "Teklif al"}
+                {site.panel.profile.heroButtonText || "Teklif al"}
               </Link>
               <Link
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
-                href="/contact"
+                href={withLocale("/contact")}
               >
-                Iletisim
+                {site.copy.menus.contact}
               </Link>
             </div>
           </div>
@@ -100,12 +116,12 @@ export default async function HomePage() {
           <div className="grid gap-3 rounded-[28px] border border-slate-200 bg-slate-50 p-5">
             <MediaFrame
               imageAlt={resolveBusinessMediaAltText(
-                panel.mediaAssets,
+                site.panel.mediaAssets,
                 "hero",
-                `${business.name} kapak görseli`,
+                `${business.name} kapak gÃ¶rseli`,
               )}
-              imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "hero")}
-              label="Ana görsel"
+              imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "hero")}
+              label="Ana gÃ¶rsel"
             />
             <InfoRow label="Business email" value={business.email} />
             <InfoRow label="Telefon" value={business.phone ?? "-"} />
@@ -119,16 +135,16 @@ export default async function HomePage() {
           title="Temel transfer hizmetleri"
           description="Business panelde tanimlanan icerikler public sitede ayni businessId ile izole edilir."
         >
-          {panel.services.length ? (
+          {site.panel.services.length ? (
             <CardGrid>
-              {panel.services.slice(0, 3).map((item) => (
+              {site.panel.services.slice(0, 3).map((item) => (
                 <ContentCard
                   key={item.id}
-                  href={`/services/${item.slug || item.id}`}
+                  href={withLocale(`/services/${item.slug || item.id}`)}
                   title={item.title}
                   description={item.description}
                   imageAlt={item.title}
-                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "service_cover")}
+                  imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "service_cover")}
                 />
               ))}
             </CardGrid>
@@ -141,16 +157,16 @@ export default async function HomePage() {
         </PanelSection>
 
         <PanelSection eyebrow="Araclar" title="Arac secenekleri">
-          {panel.vehicles.length ? (
+          {site.panel.vehicles.length ? (
             <CardGrid>
-              {panel.vehicles.slice(0, 3).map((item) => (
+              {site.panel.vehicles.slice(0, 3).map((item) => (
                 <ContentCard
                   key={item.id}
-                  href={`/vehicles/${item.slug || item.id}`}
+                  href={withLocale(`/vehicles/${item.slug || item.id}`)}
                   title={item.title}
                   description={item.description}
                   imageAlt={item.title}
-                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "vehicle_cover")}
+                  imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "vehicle_cover")}
                 />
               ))}
             </CardGrid>
@@ -163,16 +179,16 @@ export default async function HomePage() {
         </PanelSection>
 
         <PanelSection eyebrow="Rotalar" title="Populer rotalar">
-          {panel.routes.length ? (
+          {site.panel.routes.length ? (
             <CardGrid>
-              {panel.routes.slice(0, 3).map((item) => (
+              {site.panel.routes.slice(0, 3).map((item) => (
                 <ContentCard
                   key={item.id}
-                  href={`/routes/${item.slug || item.id}`}
+                  href={withLocale(`/routes/${item.slug || item.id}`)}
                   title={item.title}
                   description={item.description}
                   imageAlt={item.title}
-                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "route_cover")}
+                  imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "route_cover")}
                 />
               ))}
             </CardGrid>
@@ -185,16 +201,16 @@ export default async function HomePage() {
         </PanelSection>
 
         <PanelSection eyebrow="Blog" title="Son yazilar">
-          {panel.blogs.length ? (
+          {site.panel.blogs.length ? (
             <CardGrid>
-              {panel.blogs.slice(0, 3).map((item) => (
+              {site.panel.blogs.slice(0, 3).map((item) => (
                 <ContentCard
                   key={item.id}
-                  href={`/blog/${item.slug || item.id}`}
+                  href={withLocale(`/blog/${item.slug || item.id}`)}
                   title={item.title}
                   description={item.excerpt || item.content || "Blog yazisi"}
                   imageAlt={item.title}
-                  imageSrc={resolveBusinessMediaSourceUrl(panel.mediaAssets, "blog_cover")}
+                  imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "blog_cover")}
                 />
               ))}
             </CardGrid>
