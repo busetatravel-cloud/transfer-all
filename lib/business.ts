@@ -474,6 +474,19 @@ async function readUserRowByAuthUserId(authUserId: string) {
   return rows[0] ?? null;
 }
 
+export async function findUserByAuthUserId(authUserId: string) {
+  if (!authUserId.trim()) {
+    return null;
+  }
+
+  if (!hasSupabaseConnection()) {
+    return null;
+  }
+
+  const row = await readUserRowByAuthUserId(authUserId.trim());
+  return row ? fromSupabaseUser(row) : null;
+}
+
 async function readUserRowByEmail(email: string) {
   const rows = await readRows(
     `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&email=eq.${encodeURIComponent(

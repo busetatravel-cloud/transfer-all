@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/auth-helpers-nextjs";
+import { findUserByAuthUserId, findUserByEmail } from "@/lib/business";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/supabase-config";
 
 export async function POST(req: Request) {
@@ -9,9 +10,7 @@ export async function POST(req: Request) {
       password?: string;
     };
 
-    const normalizedEmail = email?.trim();
-
-    if (!normalizedEmail || !password) {
+    if (!email || !password) {
       return Response.json({ error: "missing_credentials" }, { status: 400 });
     }
 
@@ -41,14 +40,14 @@ export async function POST(req: Request) {
               cookieStore.set(cookie.name, cookie.value, cookie.options);
             }
           } catch {
-            // Route handler cookie write best-effort.
+            // Best-effort cookie sync.
           }
         },
       },
     });
 
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
+      email: email.trim(),
       password,
     });
 
@@ -56,9 +55,25 @@ export async function POST(req: Request) {
       return Response.json({ error: error.message }, { status: 401 });
     }
 
+    const authUserId = data.user?.id ?? null;
+    const emailLookup = await findUserByEmail(email.trim());
+    const authLookup = authUserId ? await findUserByAuthUserId(authUserId) : null;
+    const userRecord = authLookup ?? emailLookup;
+
+    if (!userRecord) {
+      return Response.json(
+        {
+          error: "role_not_found",
+        },
+        { status: 401 },
+      );
+    }
+
     return Response.json({
       ok: true,
-      userId: data.user?.id ?? null,
+      userId: authUserId,
+      role: userRecord.role,
+      businessId: userRecord.businessId,
     });
   } catch (error) {
     return Response.json(

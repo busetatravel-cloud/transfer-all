@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
-import { getLandingPath } from "@/lib/platform";
 
 type LoginState = {
   code: string | null;
@@ -54,25 +53,33 @@ export function LoginForm() {
       }
 
       const payload = (await response.json()) as {
-        authMessage?: string | null;
-        currentStep?: string;
-        redirectTo?: string;
-        role?: "SUPER_ADMIN" | "BUSINESS_ADMIN";
         ok?: boolean;
+        userId?: string | null;
+        role?: "SUPER_ADMIN" | "BUSINESS_ADMIN";
+        businessId?: string | null;
+        error?: string;
       };
 
-      if (!payload.ok) {
+      if (!payload.ok || !payload.role) {
         setState({
-          code: payload.currentStep ?? null,
-          error: payload.authMessage ?? "Giris yapilamadi.",
+          code: null,
+          error: payload.error ?? "Giris yapilamadi.",
         });
         return;
       }
 
       startTransition(() => {
-        router.replace(
-          payload.redirectTo ?? getLandingPath(payload.role ?? null),
-        );
+        if (payload.role === "SUPER_ADMIN") {
+          router.push("/super-admin");
+        } else if (payload.role === "BUSINESS_ADMIN") {
+          router.push("/app");
+        } else {
+          setState({
+            code: null,
+            error: "Giris yapildi ama yonlendirme bulunamadi.",
+          });
+          return;
+        }
         router.refresh();
       });
     } finally {
