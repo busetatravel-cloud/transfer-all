@@ -5,9 +5,16 @@ import { SESSION_COOKIE_NAME } from "@/lib/session";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => null)) as
-      | { email?: string; password?: string }
-      | null;
+    let body: { email?: string; password?: string } | null = null;
+
+    try {
+      body = (await request.json()) as { email?: string; password?: string };
+    } catch {
+      return Response.json(
+        { error: "invalid_request_body" },
+        { status: 400 },
+      );
+    }
 
     const email = body?.email?.trim().toLowerCase() ?? "";
     const password = body?.password ?? "";
