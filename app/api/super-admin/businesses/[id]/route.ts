@@ -156,8 +156,14 @@ export async function POST(
     revalidatePath("/super-admin");
     return NextResponse.json({ ok: true, business });
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : "Admin olusturulamadi.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const authCreateMatch = rawMessage.match(/^AUTH_CREATE_FAILED:\s*(.*)$/i);
+    const code = authCreateMatch ? "auth_create_failed" : "admin_create_failed";
+    const message = authCreateMatch?.[1]?.trim() || rawMessage;
+    return NextResponse.json(
+      { ok: false, code, message },
+      { status: 400 },
+    );
   }
 }

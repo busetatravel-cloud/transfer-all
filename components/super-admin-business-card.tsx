@@ -11,6 +11,7 @@ type Props = {
 };
 
 type FormState = {
+  code: string | null;
   error: string | null;
   success: string | null;
 };
@@ -20,7 +21,11 @@ type ActionType = "activate" | "deactivate" | "delete";
 
 export function SuperAdminBusinessCard({ business }: Props) {
   const router = useRouter();
-  const [state, setState] = useState<FormState>({ error: null, success: null });
+  const [state, setState] = useState<FormState>({
+    code: null,
+    error: null,
+    success: null,
+  });
   const [isPending, startTransition] = useTransition();
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -41,7 +46,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
       }
     }
 
-    setState({ error: null, success: null });
+    setState({ code: null, error: null, success: null });
 
     const response = await fetch(`/api/super-admin/businesses/${business.id}`, {
       method: "PATCH",
@@ -51,11 +56,12 @@ export function SuperAdminBusinessCard({ business }: Props) {
 
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | { code?: string; message?: string; error?: string }
         | null;
 
       setState({
-        error: body?.error ?? "Islem basarisiz.",
+        code: body?.code ?? null,
+        error: body?.message ?? body?.error ?? "Islem basarisiz.",
         success: null,
       });
       return;
@@ -66,6 +72,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
       | null;
 
     setState({
+      code: null,
       error: null,
       success: body?.message ?? "Islem tamamlandi.",
     });
@@ -76,7 +83,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
   }
 
   async function createAdmin() {
-    setState({ error: null, success: null });
+    setState({ code: null, error: null, success: null });
 
     const response = await fetch(`/api/super-admin/businesses/${business.id}`, {
       method: "POST",
@@ -86,11 +93,12 @@ export function SuperAdminBusinessCard({ business }: Props) {
 
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | { code?: string; message?: string; error?: string }
         | null;
 
       setState({
-        error: body?.error ?? "Admin olusturulamadi.",
+        code: body?.code ?? null,
+        error: body?.message ?? body?.error ?? "Admin olusturulamadi.",
         success: null,
       });
       return;
@@ -99,6 +107,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
     setAdminEmail("");
     setAdminPassword("");
     setState({
+      code: null,
       error: null,
       success: "Admin olusturuldu.",
     });
@@ -209,6 +218,7 @@ export function SuperAdminBusinessCard({ business }: Props) {
         </p>
         {state.error ? (
           <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {state.code ? `${state.code}: ` : ""}
             {state.error}
           </p>
         ) : null}

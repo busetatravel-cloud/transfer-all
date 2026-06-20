@@ -573,6 +573,23 @@ async function deleteUserRow(userId: string) {
   return Boolean(response?.ok);
 }
 
+async function clearUserAuthBinding(userId: string) {
+  const response = await supabaseFetch(`/users?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      auth_user_id: null,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!response?.ok) {
+    const text = response ? await response.text().catch(() => "") : "";
+    throw new Error(text || "Kullanici auth baglantisi temizlenemedi.");
+  }
+
+  return true;
+}
+
 export async function repairBusinessAdminAuthUser(user: UserRecord) {
   if (user.role !== "BUSINESS_ADMIN") {
     return user;
@@ -584,6 +601,8 @@ export async function repairBusinessAdminAuthUser(user: UserRecord) {
     if (authLookup.ok && authLookup.user?.id) {
       return user;
     }
+
+    await clearUserAuthBinding(user.id);
   }
 
   if (!user.passwordPlaintext) {
@@ -617,7 +636,9 @@ export async function repairBusinessAdminAuthUser(user: UserRecord) {
   }
 
   if (!authUser?.id) {
-    throw new Error(createResult.errorMessage ?? "Auth kullanici onarilamadi.");
+    throw new Error(
+      `AUTH_CREATE_FAILED: ${createResult.errorMessage ?? "Auth kullanici onarilamadi."}`,
+    );
   }
 
   const repaired = await upsertUserRowById({
@@ -1746,7 +1767,14 @@ export async function createBusinessAdminRecord(
     }
 
     if (existingAdmin && !existingAdmin.deleted_at) {
-      const repaired = await ensureBusinessAdminAuthUser(fromSupabaseUser(existingAdmin));
+      const repaired = await ensureBusinessAdminAuthUser({
+        ...fromSupabaseUser(existingAdmin),
+        passwordHash,
+        passwordPlaintext: nextPassword,
+        passwordChangedAt: changedAt,
+        lastLoginAt: fromSupabaseUser(existingAdmin).lastLoginAt,
+        updatedAt: changedAt,
+      });
       const updated = await upsertUserRowById({
         id: repaired.id,
         businessId,
