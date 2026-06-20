@@ -171,12 +171,23 @@ function isDuplicateEmailError(status: number, rawText: string) {
 }
 
 export async function createSupabaseAuthUser(input: CreateAuthUserInput): Promise<CreateAuthUserResult> {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const serviceRoleExists = Boolean(getAdminKey().trim());
+
+  console.info("supabase.auth.createUser.request", {
+    action: "create_user",
+    email: normalizedEmail,
+    businessId: input.appMetadata?.businessId ?? input.userMetadata?.businessId ?? null,
+    serviceRoleExists,
+    emailConfirm: input.emailConfirm ?? true,
+  });
+
   const response = await authFetch(
     "/admin/users",
     {
       method: "POST",
       body: JSON.stringify({
-        email: input.email.trim().toLowerCase(),
+        email: normalizedEmail,
         password: input.password,
         email_confirm: input.emailConfirm ?? true,
         app_metadata: input.appMetadata ?? {},
@@ -204,6 +215,7 @@ export async function createSupabaseAuthUser(input: CreateAuthUserInput): Promis
     email?: string;
     message?: string;
     error?: string;
+    msg?: string;
   }>(response);
   const user = extractAuthUser(parsed.data);
   const errorMessage =
@@ -217,6 +229,17 @@ export async function createSupabaseAuthUser(input: CreateAuthUserInput): Promis
           }
         })()
       : null;
+
+  console.info("supabase.auth.createUser.response", {
+    action: "create_user",
+    email: normalizedEmail,
+    businessId: input.appMetadata?.businessId ?? input.userMetadata?.businessId ?? null,
+    serviceRoleExists,
+    status: response.status,
+    ok: response.ok,
+    message: errorMessage,
+    createdAuthUserId: user?.id ?? null,
+  });
 
   return {
     ...parsed,

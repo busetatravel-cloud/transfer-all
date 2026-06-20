@@ -151,6 +151,13 @@ export async function POST(
   }
 
   try {
+    console.info("super-admin.businesses.admin.create.request", {
+      action: "create_admin",
+      email: adminEmail,
+      businessId: id,
+      serviceRoleExists: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
+    });
+
     await createBusinessAdminRecord(id, adminEmail, adminPassword);
     const business = await getBusinessById(id);
     revalidatePath("/super-admin");
@@ -161,6 +168,14 @@ export async function POST(
     const authCreateMatch = rawMessage.match(/^AUTH_CREATE_FAILED:\s*(.*)$/i);
     const code = authCreateMatch ? "auth_create_failed" : "admin_create_failed";
     const message = authCreateMatch?.[1]?.trim() || rawMessage;
+    console.error("super-admin.businesses.admin.create.failed", {
+      action: "create_admin",
+      email: adminEmail,
+      businessId: id,
+      code,
+      message,
+      rawMessage,
+    });
     return NextResponse.json(
       { ok: false, code, message },
       { status: 400 },
