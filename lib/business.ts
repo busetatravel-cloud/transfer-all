@@ -14,6 +14,13 @@ import {
   type DomainProviderStatus,
   type DomainStatus,
 } from "@/lib/domain-utils";
+import {
+  createSupabaseAuthUser,
+  deleteSupabaseAuthUser,
+  getSupabaseAuthUserById,
+  signInWithSupabaseAuth,
+  updateSupabaseAuthUserPassword,
+} from "@/lib/supabase-auth";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 
 export type BusinessRecord = {
@@ -49,9 +56,11 @@ export type UserRecord = {
   businessId: string | null;
   role: SessionRole;
   email: string;
+  authUserId: string | null;
   passwordHash: string;
   passwordPlaintext: string | null;
   passwordChangedAt: string | null;
+  lastLoginAt: string | null;
   deletedAt: string | null;
   active: boolean;
   createdAt: string;
@@ -62,8 +71,11 @@ export type BusinessListRecord = BusinessRecord & {
   admin: {
     id: string;
     email: string;
+    authUserId: string | null;
     password: string | null;
     passwordChangedAt: string | null;
+    lastLoginAt: string | null;
+    createdAt: string | null;
     role: SessionRole | null;
     active: boolean | null;
   } | null;
@@ -71,6 +83,8 @@ export type BusinessListRecord = BusinessRecord & {
   adminEmail: string;
   adminPassword: string | null;
   adminPasswordChangedAt: string | null;
+  adminLastLoginAt: string | null;
+  adminCreatedAt: string | null;
   adminDeletedAt: string | null;
   adminRole: SessionRole | null;
   adminActive: boolean | null;
@@ -149,9 +163,11 @@ function buildDemoUsers(): UserRecord[] {
       businessId: null,
       role: "SUPER_ADMIN",
       email: superAdminEmail.toLowerCase(),
+      authUserId: null,
       passwordHash: hashPassword(superAdminPassword),
       passwordPlaintext: superAdminPassword,
       passwordChangedAt: "2026-06-01T00:00:00.000Z",
+      lastLoginAt: null,
       deletedAt: null,
       active: true,
       createdAt: "2026-06-01T00:00:00.000Z",
@@ -165,9 +181,11 @@ function buildDemoUsers(): UserRecord[] {
       businessId: "business-demo-1",
       role: "BUSINESS_ADMIN",
       email: businessAdminEmail.toLowerCase(),
+      authUserId: null,
       passwordHash: hashPassword(businessAdminPassword),
       passwordPlaintext: businessAdminPassword,
       passwordChangedAt: "2026-06-01T00:00:00.000Z",
+      lastLoginAt: null,
       deletedAt: null,
       active: true,
       createdAt: "2026-06-01T00:00:00.000Z",
@@ -221,9 +239,11 @@ function fromSupabaseUser(row: Record<string, unknown>): UserRecord {
     businessId: (row.business_id as string | null) ?? null,
     role: (row.role as SessionRole) ?? "BUSINESS_ADMIN",
     email: String(row.email ?? ""),
+    authUserId: (row.auth_user_id as string | null) ?? null,
     passwordHash: String(row.password_hash ?? ""),
     passwordPlaintext: (row.password_plaintext as string | null) ?? null,
     passwordChangedAt: (row.password_changed_at as string | null) ?? null,
+    lastLoginAt: (row.last_login_at as string | null) ?? null,
     deletedAt: (row.deleted_at as string | null) ?? null,
     active: Boolean(row.active ?? false),
     createdAt: String(row.created_at ?? ""),
@@ -271,89 +291,363 @@ async function readRows(path: string) {
   }
 }
 
-async function supabaseRpc(name: string, body: Record<string, unknown>) {
-  const response = await supabaseFetch(`/rpc/${name}`, {
-    method: "POST",
-    body: JSON.stringify(body),
+async function readResponseRows(response: Response | null) {
+  if (!response) {
+    return [] as Array<Record<string, unknown>>;
+  }
+
+  const text = await response.text().catch(() => "");
+
+  if (!text.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readBusinessAdminRowByBusinessId(businessId: string) {
+  const rows = await readRows(
+    `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&business_id=eq.${encodeURIComponent(
+      businessId,
+    )}&role=eq.BUSINESS_ADMIN&deleted_at=is.null&limit=1`,
+  );
+
+  return rows[0] ?? null;
+}
+
+async function readUserRowByAuthUserId(authUserId: string) {
+  const rows = await readRows(
+    `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&auth_user_id=eq.${encodeURIComponent(
+      authUserId,
+    )}&limit=1`,
+  );
+
+  return rows[0] ?? null;
+}
+
+async function readUserRowByEmail(email: string) {
+  const rows = await readRows(
+    `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&email=eq.${encodeURIComponent(
+      email,
+    )}&limit=1`,
+  );
+
+  return rows[0] ?? null;
+}
+
+async function insertBusinessRow(input: {
+  name: string;
+  email: string;
+  phone: string | null;
+  whatsapp: string | null;
+  domain: string | null;
+}) {
+  const response = await supabaseFetch("/businesses", {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        name: input.name,
+        email: input.email,
+      phone: input.phone,
+      whatsapp: input.whatsapp,
+      domain: input.domain,
+      domain_status: "pending",
+      ssl_status: "pending",
+      domain_provider: "manual",
+      provider_status: "manual",
+    }),
   });
 
-  if (!response) {
-    return {
-      ok: false as const,
-      status: 0,
-      data: null as unknown,
-      errorBody: "Supabase baglantisi kurulamadi.",
-      rawBody: null as string | null,
-    };
+  if (!response?.ok) {
+    const text = response ? await response.text().catch(() => "") : "";
+    throw new Error(text || "Business olusturulamadi.");
   }
 
-  const rawBody = await response.text().catch(() => "");
+  const rows = await readResponseRows(response);
+  const row = rows[0];
 
-  if (!response.ok) {
-    return {
-      ok: false as const,
-      status: response.status,
-      data: null as unknown,
-      errorBody: rawBody,
-      rawBody,
-    };
+  if (!row?.id) {
+    throw new Error("Business olusturulamadi: yanit eksik.");
   }
 
-  let data: unknown = null;
+  return fromSupabaseBusiness(row);
+}
 
-  if (rawBody) {
-    try {
-      data = JSON.parse(rawBody) as unknown;
-    } catch {
-      data = null;
+async function deleteBusinessRow(businessId: string) {
+  const response = await supabaseFetch(
+    `/businesses?id=eq.${encodeURIComponent(businessId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!response?.ok) {
+    return false;
+  }
+
+  return true;
+}
+
+async function upsertUserRowById(
+  user: Partial<UserRecord> & {
+    id?: string;
+    authUserId?: string | null;
+    email: string;
+    businessId: string | null;
+    role: SessionRole;
+  },
+) {
+  const now = new Date().toISOString();
+  const existingByAuth = user.authUserId
+    ? await readUserRowByAuthUserId(user.authUserId)
+    : null;
+  const existingByEmail = existingByAuth ? null : await readUserRowByEmail(user.email);
+  const existing = existingByAuth ?? existingByEmail;
+  const payload = {
+    id: existing?.id ?? user.id ?? randomUUID(),
+    business_id: user.businessId,
+    role: user.role,
+    email: user.email,
+    auth_user_id: user.authUserId ?? existing?.auth_user_id ?? null,
+    password_hash: user.passwordHash ?? existing?.password_hash ?? "",
+    password_plaintext: user.passwordPlaintext ?? existing?.password_plaintext ?? null,
+    password_changed_at: user.passwordChangedAt ?? existing?.password_changed_at ?? null,
+    last_login_at: user.lastLoginAt ?? existing?.last_login_at ?? null,
+    deleted_at: user.deletedAt ?? existing?.deleted_at ?? null,
+    active: user.active ?? existing?.active ?? true,
+    created_at: existing?.created_at ?? now,
+    updated_at: user.updatedAt ?? now,
+  };
+
+  const response = existing
+    ? await supabaseFetch(`/users?id=eq.${encodeURIComponent(String(existing.id ?? payload.id))}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    : await supabaseFetch("/users", {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        ...payload,
+        active: payload.active ?? true,
+        deleted_at: payload.deleted_at ?? null,
+      }),
+      });
+
+  if (!response?.ok) {
+    const text = response ? await response.text().catch(() => "") : "";
+    throw new Error(text || "Kullanici kaydedilemedi.");
+  }
+
+  const rows = existing ? [payload] : await readResponseRows(response);
+  const row = rows[0] ?? payload;
+
+  return fromSupabaseUser({
+    id: row.id,
+    business_id: row.business_id,
+    role: row.role,
+    email: row.email,
+    auth_user_id: row.auth_user_id,
+    password_hash: row.password_hash,
+    password_plaintext: row.password_plaintext,
+    password_changed_at: row.password_changed_at,
+    last_login_at: row.last_login_at,
+    deleted_at: row.deleted_at,
+    active: row.active,
+    created_at: row.created_at ?? now,
+    updated_at: row.updated_at ?? now,
+  });
+}
+
+async function deleteUserRow(userId: string) {
+  const response = await supabaseFetch(`/users?id=eq.${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+  });
+
+  return Boolean(response?.ok);
+}
+
+export async function repairBusinessAdminAuthUser(user: UserRecord) {
+  if (user.role !== "BUSINESS_ADMIN") {
+    return user;
+  }
+
+  const existingAuthId = user.authUserId?.trim() || null;
+  if (existingAuthId) {
+    const authLookup = await getSupabaseAuthUserById(existingAuthId);
+    if (authLookup.ok && authLookup.user?.id) {
+      return user;
     }
   }
 
-  return {
-    ok: true as const,
-    status: response.status,
-    data,
-    errorBody: null,
-    rawBody,
-  };
-}
-
-type CreateBusinessRpcResponse = {
-  business_id?: string;
-  user_id?: string;
-  business_name?: string;
-  business_email?: string;
-  admin_email?: string;
-  role?: string;
-  business?: {
-    id?: string;
-    name?: string;
-    email?: string;
-  };
-  admin?: {
-    id?: string;
-    email?: string;
-    role?: string;
-  };
-};
-
-function parseCreateBusinessRpcResponse(data: unknown) {
-  const value = Array.isArray(data) ? data[0] : data;
-
-  if (!value || typeof value !== "object") {
-    return null;
+  if (!user.passwordPlaintext) {
+    throw new Error("Business admin sifresi bulunamadi; auth kullanici onarilamadi.");
   }
 
-  const record = value as CreateBusinessRpcResponse;
+  const createResult = await createSupabaseAuthUser({
+    email: user.email,
+    password: user.passwordPlaintext,
+    emailConfirm: true,
+    appMetadata: {
+      role: user.role,
+      businessId: user.businessId,
+    },
+    userMetadata: {
+      role: user.role,
+      businessId: user.businessId,
+    },
+  });
 
-  return {
-    businessId: record.business_id ?? record.business?.id ?? "",
-    businessName: record.business?.name ?? record.business_name ?? "",
-    businessEmail: record.business?.email ?? record.business_email ?? "",
-    adminId: record.user_id ?? record.admin?.id ?? "",
-    adminEmail: record.admin?.email ?? record.admin_email ?? "",
-    role: record.admin?.role ?? record.role ?? "BUSINESS_ADMIN",
-  };
+  let authUser = createResult.user;
+
+  if (!authUser && createResult.duplicateEmail) {
+    const loginResult = await signInWithSupabaseAuth(user.email, user.passwordPlaintext);
+
+    if (!loginResult.user) {
+      throw new Error(loginResult.errorMessage ?? "Auth kullanici onarilamadi.");
+    }
+
+    authUser = loginResult.user;
+  }
+
+  if (!authUser?.id) {
+    throw new Error(createResult.errorMessage ?? "Auth kullanici onarilamadi.");
+  }
+
+  const repaired = await upsertUserRowById({
+    id: user.id,
+    businessId: user.businessId,
+    role: user.role,
+    email: user.email,
+    authUserId: authUser.id,
+    passwordHash: user.passwordHash,
+    passwordPlaintext: user.passwordPlaintext,
+    passwordChangedAt: user.passwordChangedAt,
+    lastLoginAt: user.lastLoginAt,
+    deletedAt: user.deletedAt,
+    active: user.active,
+    createdAt: user.createdAt,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return repaired;
+}
+
+export async function ensureBusinessAdminAuthUser(user: UserRecord) {
+  if (user.role !== "BUSINESS_ADMIN") {
+    return user;
+  }
+
+  const current = user.authUserId ? await readUserRowByAuthUserId(user.authUserId) : null;
+
+  if (current?.id && user.authUserId) {
+    const authLookup = await getSupabaseAuthUserById(user.authUserId);
+    if (authLookup.ok && authLookup.user?.id) {
+      return fromSupabaseUser(current);
+    }
+  }
+
+  if (current?.id && !user.authUserId) {
+    return fromSupabaseUser(current);
+  }
+
+  return repairBusinessAdminAuthUser(user);
+}
+
+export async function syncBusinessAdminFromAuthLogin(
+  authUser: {
+    id: string;
+    email: string;
+    app_metadata?: Record<string, unknown>;
+    user_metadata?: Record<string, unknown>;
+  },
+  password: string,
+) {
+  const normalizedEmail = authUser.email.trim().toLowerCase();
+  const now = new Date().toISOString();
+  const businessId =
+    (typeof authUser.user_metadata?.businessId === "string"
+      ? authUser.user_metadata.businessId
+      : null) ??
+    (typeof authUser.app_metadata?.businessId === "string"
+      ? authUser.app_metadata.businessId
+      : null);
+
+  const existing =
+    (await readUserRowByAuthUserId(authUser.id)) ??
+    (await readUserRowByEmail(normalizedEmail));
+  const resolvedBusinessId =
+    String(existing?.business_id ?? businessId ?? "").trim() || null;
+
+  if (!resolvedBusinessId) {
+    throw new Error("Business admin public kaydi icin businessId bulunamadi.");
+  }
+
+  const upserted = await upsertUserRowById({
+    id: existing?.id ? String(existing.id) : undefined,
+    businessId: resolvedBusinessId,
+    role: (existing?.role as SessionRole) ?? "BUSINESS_ADMIN",
+    email: normalizedEmail,
+    authUserId: authUser.id,
+    passwordHash: String(existing?.password_hash ?? hashPassword(password)),
+    passwordPlaintext: (existing?.password_plaintext as string | null) ?? password,
+    passwordChangedAt:
+      (existing?.password_changed_at as string | null) ?? now,
+    lastLoginAt: now,
+    deletedAt: null,
+    active: Boolean(existing?.active ?? true),
+  });
+
+  return upserted;
+}
+
+export async function repairMissingBusinessAdminAuthRecords() {
+  const config = getSupabaseConfig();
+
+  if (!config) {
+    return { repaired: 0, skipped: 0, failed: 0 };
+  }
+
+  const rows = await readRows(
+    `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
+  );
+
+  let repaired = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    const user = fromSupabaseUser(row);
+
+    try {
+      const beforeAuthId = user.authUserId;
+      await ensureBusinessAdminAuthUser(user);
+      if (beforeAuthId) {
+        skipped += 1;
+      } else {
+        repaired += 1;
+      }
+    } catch (error) {
+      failed += 1;
+      console.warn("repairMissingBusinessAdminAuthRecords failed", {
+        userId: user.id,
+        businessId: user.businessId,
+        email: user.email,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { repaired, skipped, failed };
 }
 export function getDemoBusinessById(id: string) {
   return demoBusinesses.find((record) => record.id === id) ?? null;
@@ -367,7 +661,7 @@ export async function findUserByEmail(email: string) {
   }
 
   const response = await supabaseFetch(
-    `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&email=eq.${encodeURIComponent(
+    `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&email=eq.${encodeURIComponent(
       normalizedEmail,
     )}&limit=1`,
   );
@@ -395,12 +689,26 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
   if (config) {
     const [businessRows, adminRows] = await Promise.all([
       readRows(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
-        `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
+        `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
       ),
     ]);
+
+    await Promise.allSettled(
+      adminRows.map(async (row) => {
+        try {
+          await ensureBusinessAdminAuthUser(fromSupabaseUser(row));
+        } catch (error) {
+          console.warn("Business admin auth repair skipped", {
+            businessId: String(row.business_id ?? ""),
+            email: String(row.email ?? ""),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }),
+    );
 
     const adminByBusinessId = new Map<string, Record<string, unknown>>();
     for (const row of adminRows) {
@@ -421,9 +729,12 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
         ? {
             id: String(admin.id ?? ""),
             email: String(admin.email ?? ""),
+            authUserId: (admin.auth_user_id as string | null) ?? null,
             password: String(admin.password_plaintext ?? "") || null,
             passwordChangedAt:
               (admin.password_changed_at as string | null) ?? null,
+            lastLoginAt: (admin.last_login_at as string | null) ?? null,
+            createdAt: (admin.created_at as string | null) ?? null,
             role: (admin.role as SessionRole) ?? null,
             active: Boolean(admin.active ?? false),
           }
@@ -436,6 +747,8 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
         adminEmail: adminSummary?.email ?? "",
         adminPassword: adminSummary?.password ?? null,
         adminPasswordChangedAt: adminSummary?.passwordChangedAt ?? null,
+        adminLastLoginAt: adminSummary?.lastLoginAt ?? null,
+        adminCreatedAt: adminSummary?.createdAt ?? null,
         adminDeletedAt: null,
         adminRole: adminSummary?.role ?? null,
         adminActive: adminSummary?.active ?? null,
@@ -452,8 +765,11 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
         ? {
             id: admin.id,
             email: admin.email,
+            authUserId: admin.authUserId,
             password: admin.passwordPlaintext,
             passwordChangedAt: admin.passwordChangedAt,
+            lastLoginAt: admin.lastLoginAt,
+            createdAt: admin.createdAt,
             role: admin.role,
             active: admin.active,
           }
@@ -466,6 +782,8 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
       adminEmail: adminSummary?.email ?? "",
       adminPassword: adminSummary?.password ?? null,
       adminPasswordChangedAt: adminSummary?.passwordChangedAt ?? null,
+      adminLastLoginAt: adminSummary?.lastLoginAt ?? null,
+      adminCreatedAt: adminSummary?.createdAt ?? null,
       adminDeletedAt: null,
       adminRole: adminSummary?.role ?? null,
       adminActive: adminSummary?.active ?? null,
@@ -558,104 +876,95 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
   const normalizedDomain = normalizeStoredDomain(input.domain);
   const normalizedBusinessEmail = input.email.trim().toLowerCase();
   const normalizedAdminEmail = input.adminEmail.trim().toLowerCase();
+  const now = new Date().toISOString();
 
   if (normalizedDomain && isReservedPlatformDomain(normalizedDomain)) {
     throw new Error("Platform domain business domain olarak kullanılamaz.");
   }
 
   if (config) {
-    const result = await supabaseRpc("create_business_with_admin", {
-      p_name: input.name,
-      p_email: normalizedBusinessEmail,
-      p_phone: input.phone || null,
-      p_whatsapp: input.whatsapp || null,
-      p_domain: normalizedDomain,
-      p_admin_email: normalizedAdminEmail,
-      p_admin_password_hash: adminPasswordHash,
+    const createdBusiness = await insertBusinessRow({
+      name: input.name,
+      email: normalizedBusinessEmail,
+      phone: input.phone || null,
+      whatsapp: input.whatsapp || null,
+      domain: normalizedDomain,
     });
 
-    if (!result.ok) {
-      const rpcError = result.errorBody ?? "";
+    let authUserId: string | null = null;
+    let createdAuthUser = false;
 
-      if (/admin email already exists/i.test(rpcError)) {
-        throw new Error("Bu admin emaili zaten kullanılıyor.");
-      }
-
-      if (/business domain already exists/i.test(rpcError)) {
-        throw new Error("Bu domain zaten kullanılıyor.");
-      }
-
-      if (/business and admin email are required/i.test(rpcError)) {
-        throw new Error("Business email ve admin email gerekli.");
-      }
-
-      if (/password hash is required/i.test(rpcError)) {
-        throw new Error("Admin sifresi gerekli.");
-      }
-
-      throw new Error(
-        rpcError || `Business olusturulamadi. HTTP ${result.status}.`,
-      );
-    }
-
-    const data = parseCreateBusinessRpcResponse(result.data);
-
-    if (!data?.businessId || !data.adminId) {
-      console.error("create_business_with_admin RPC yaniti eksik", {
-        rawBody: result.rawBody ?? result.errorBody ?? "",
+    try {
+      const authResult = await createSupabaseAuthUser({
+        email: normalizedAdminEmail,
+        password: input.adminPassword,
+        emailConfirm: true,
+        appMetadata: {
+          role: "BUSINESS_ADMIN",
+          businessId: createdBusiness.id,
+        },
+        userMetadata: {
+          role: "BUSINESS_ADMIN",
+          businessId: createdBusiness.id,
+          businessName: input.name,
+        },
       });
-      throw new Error("Business olusturulamadi: RPC yaniti eksik.");
-    }
 
-    const business =
-      (await getBusinessById(data.businessId)) ??
-      ({
-        id: data.businessId,
-        name: data.businessName || input.name,
-        email: data.businessEmail || normalizedBusinessEmail,
-        phone: input.phone || null,
-        whatsapp: input.whatsapp || null,
-        logoUrl: null,
-        active: true,
-        planId: null,
-        packageName: "Starter",
-        packageStart: new Date().toISOString(),
-        packageEnd: null,
-        domain: normalizedDomain,
-        hostname: normalizedDomain,
-        verificationToken: normalizedDomain ? buildDomainVerificationToken() : null,
-        verifiedAt: null,
-        activatedAt: null,
-        lastCheckedAt: normalizedDomain ? new Date().toISOString() : null,
-        domainProvider: "manual",
-        domainProviderStatus: "manual",
-        domainProviderMessage: null,
-        domainProviderSyncedAt: null,
-        sslStatus: "pending",
-        domainStatus: "pending",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      } satisfies BusinessRecord);
+      authUserId = authResult.user?.id ?? null;
+      createdAuthUser = Boolean(authUserId && !authResult.duplicateEmail);
 
-    return {
-      business,
-      admin: {
-        id: data.adminId,
-        businessId: business.id,
-        role: (data.role as SessionRole) ?? "BUSINESS_ADMIN",
-        email: data.adminEmail || normalizedAdminEmail,
+      if (!authUserId && authResult.duplicateEmail) {
+        const loginResult = await signInWithSupabaseAuth(
+          normalizedAdminEmail,
+          input.adminPassword,
+        );
+        authUserId = loginResult.user?.id ?? null;
+      }
+
+      if (!authUserId) {
+        throw new Error(authResult.errorMessage ?? "Auth kullanici olusturulamadi.");
+      }
+
+      const admin = await upsertUserRowById({
+        businessId: createdBusiness.id,
+        role: "BUSINESS_ADMIN",
+        email: normalizedAdminEmail,
+        authUserId,
+        passwordHash: adminPasswordHash,
         passwordPlaintext: input.adminPassword,
-        passwordChangedAt: new Date().toISOString(),
+        passwordChangedAt: now,
+        lastLoginAt: null,
         deletedAt: null,
         active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    } satisfies BusinessCreateResult;
+      });
+
+      return {
+        business: createdBusiness,
+        admin: {
+          id: admin.id,
+          businessId: admin.businessId,
+          role: admin.role,
+          email: admin.email,
+          authUserId: admin.authUserId,
+          passwordPlaintext: admin.passwordPlaintext,
+          passwordChangedAt: admin.passwordChangedAt,
+          lastLoginAt: admin.lastLoginAt,
+          deletedAt: admin.deletedAt,
+          active: admin.active,
+          createdAt: admin.createdAt,
+          updatedAt: admin.updatedAt,
+        },
+      } satisfies BusinessCreateResult;
+    } catch (error) {
+      if (authUserId && createdAuthUser) {
+        await deleteSupabaseAuthUser(authUserId).catch(() => null);
+      }
+      await deleteBusinessRow(createdBusiness.id).catch(() => null);
+      throw error;
+    }
   }
   const businessId = `business-${randomUUID()}`;
   const userId = `user-${randomUUID()}`;
-  const now = new Date().toISOString();
 
   if (
     demoBusinesses.some(
@@ -710,9 +1019,11 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
     businessId,
     role: "BUSINESS_ADMIN",
     email: normalizedAdminEmail,
+    authUserId: null,
     passwordHash: adminPasswordHash,
     passwordPlaintext: input.adminPassword,
     passwordChangedAt: now,
+    lastLoginAt: null,
     deletedAt: null,
     active: true,
     createdAt: now,
@@ -729,8 +1040,10 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
       businessId: admin.businessId,
       role: admin.role,
       email: admin.email,
+      authUserId: admin.authUserId,
       passwordPlaintext: admin.passwordPlaintext,
       passwordChangedAt: admin.passwordChangedAt,
+      lastLoginAt: admin.lastLoginAt,
       deletedAt: admin.deletedAt,
       active: admin.active,
       createdAt: admin.createdAt,
@@ -988,6 +1301,34 @@ export async function updateBusinessAdminPasswordRecord(
   const config = getSupabaseConfig();
 
   if (config) {
+    const admins = await readRows(
+      `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&id=eq.${encodeURIComponent(
+        userId,
+      )}&business_id=eq.${encodeURIComponent(businessId)}&limit=1`,
+    );
+    const adminRow = admins[0];
+    if (!adminRow?.id) {
+      throw new Error("Business admin bulunamadi.");
+    }
+
+    const authUserId = String(adminRow.auth_user_id ?? "");
+    if (!authUserId) {
+      const repaired = await ensureBusinessAdminAuthUser(fromSupabaseUser(adminRow));
+      if (repaired.authUserId) {
+        await updateSupabaseAuthUserPassword(repaired.authUserId, nextPassword).catch(() => null);
+      }
+    } else {
+      const authLookup = await getSupabaseAuthUserById(authUserId);
+      if (!authLookup.ok || !authLookup.user?.id) {
+        const repaired = await ensureBusinessAdminAuthUser(fromSupabaseUser(adminRow));
+        if (repaired.authUserId) {
+          await updateSupabaseAuthUserPassword(repaired.authUserId, nextPassword).catch(() => null);
+        }
+      } else {
+        await updateSupabaseAuthUserPassword(authUserId, nextPassword).catch(() => null);
+      }
+    }
+
     const response = await supabaseFetch(
       `/users?id=eq.${encodeURIComponent(userId)}&business_id=eq.${encodeURIComponent(
         businessId,
@@ -1080,6 +1421,19 @@ export async function deleteBusinessRecord(businessId: string) {
   const config = getSupabaseConfig();
 
   if (config) {
+    const admins = await readRows(
+      `/users?select=id,auth_user_id&business_id=eq.${encodeURIComponent(
+        businessId,
+      )}&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
+    );
+
+    for (const admin of admins) {
+      const authUserId = String(admin.auth_user_id ?? "");
+      if (authUserId) {
+        await deleteSupabaseAuthUser(authUserId).catch(() => null);
+      }
+    }
+
     const existing = await getBusinessById(businessId);
 
     if (!existing) {
@@ -1126,7 +1480,7 @@ export async function updateBusinessAdminActiveRecord(
 
   if (config) {
     const admins = await readRows(
-      `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&business_id=eq.${encodeURIComponent(
+      `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&business_id=eq.${encodeURIComponent(
         businessId,
       )}&role=eq.BUSINESS_ADMIN&deleted_at=is.null&limit=1`,
     );
@@ -1175,7 +1529,7 @@ export async function deleteBusinessAdminRecord(businessId: string) {
 
   if (config) {
     const admins = await readRows(
-      `/users?select=id,business_id,role,email,password_hash,password_plaintext,password_changed_at,deleted_at,active,created_at,updated_at&business_id=eq.${encodeURIComponent(
+      `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&business_id=eq.${encodeURIComponent(
         businessId,
       )}&role=eq.BUSINESS_ADMIN&limit=1`,
     );
@@ -1183,6 +1537,10 @@ export async function deleteBusinessAdminRecord(businessId: string) {
 
     if (!admin?.id) {
       throw new Error("Business admin bulunamadi.");
+    }
+
+    if (admin.auth_user_id) {
+      await deleteSupabaseAuthUser(String(admin.auth_user_id)).catch(() => null);
     }
 
     const response = await supabaseFetch(
@@ -1234,35 +1592,86 @@ export async function createBusinessAdminRecord(
   const config = getSupabaseConfig();
 
   if (config) {
-    const existing = await readRows(
-      `/users?select=id,deleted_at&business_id=eq.${encodeURIComponent(
-        businessId,
-      )}&role=eq.BUSINESS_ADMIN&deleted_at=is.null&limit=1`,
-    );
-
-    if (existing[0]) {
-      throw new Error("Bu business icin aktif admin zaten var.");
+    const currentBusiness = await getBusinessById(businessId);
+    if (!currentBusiness) {
+      throw new Error("Business bulunamadi.");
     }
 
-    const response = await supabaseFetch(`/users`, {
-      method: "POST",
-      body: JSON.stringify({
-        business_id: businessId,
+    const existingAdmin = await readBusinessAdminRowByBusinessId(businessId);
+    if (existingAdmin && existingAdmin.deleted_at) {
+      await deleteUserRow(String(existingAdmin.id)).catch(() => null);
+    }
+
+    if (existingAdmin && !existingAdmin.deleted_at) {
+      const repaired = await ensureBusinessAdminAuthUser(fromSupabaseUser(existingAdmin));
+      const updated = await upsertUserRowById({
+        id: repaired.id,
+        businessId,
         role: "BUSINESS_ADMIN",
         email: normalizedEmail,
-        password_hash: passwordHash,
-        password_plaintext: nextPassword,
-        password_changed_at: changedAt,
-        deleted_at: null,
+        authUserId: repaired.authUserId,
+        passwordHash: repaired.passwordHash,
+        passwordPlaintext: nextPassword,
+        passwordChangedAt: changedAt,
+        lastLoginAt: repaired.lastLoginAt,
+        deletedAt: null,
         active: true,
-      }),
-    });
+      });
 
-    if (!response?.ok) {
-      throw new Error("Business admin olusturulamadi.");
+      const nextAuthUserId = updated.authUserId ?? repaired.authUserId;
+      if (nextAuthUserId) {
+        await updateSupabaseAuthUserPassword(nextAuthUserId, nextPassword).catch(() => null);
+      }
+
+      return true;
     }
 
-    return true;
+    const authResult = await createSupabaseAuthUser({
+      email: normalizedEmail,
+      password: nextPassword,
+      emailConfirm: true,
+      appMetadata: {
+        role: "BUSINESS_ADMIN",
+        businessId,
+      },
+      userMetadata: {
+        role: "BUSINESS_ADMIN",
+        businessId,
+        businessName: currentBusiness.name,
+      },
+    });
+
+    let authUserId = authResult.user?.id ?? null;
+    const createdAuthUser = Boolean(authUserId && !authResult.duplicateEmail);
+    if (!authUserId && authResult.duplicateEmail) {
+      const loginResult = await signInWithSupabaseAuth(normalizedEmail, nextPassword);
+      authUserId = loginResult.user?.id ?? null;
+    }
+
+    if (!authUserId) {
+      throw new Error(authResult.errorMessage ?? "Business admin olusturulamadi.");
+    }
+
+    try {
+      await upsertUserRowById({
+        businessId,
+        role: "BUSINESS_ADMIN",
+        email: normalizedEmail,
+        authUserId,
+        passwordHash,
+        passwordPlaintext: nextPassword,
+        passwordChangedAt: changedAt,
+        lastLoginAt: null,
+        deletedAt: null,
+        active: true,
+      });
+      return true;
+    } catch (error) {
+      if (createdAuthUser && authUserId) {
+        await deleteSupabaseAuthUser(authUserId).catch(() => null);
+      }
+      throw error;
+    }
   }
 
   const existing = demoUsers.find(
@@ -1281,9 +1690,11 @@ export async function createBusinessAdminRecord(
     businessId,
     role: "BUSINESS_ADMIN",
     email: normalizedEmail,
+    authUserId: null,
     passwordHash,
     passwordPlaintext: nextPassword,
     passwordChangedAt: changedAt,
+    lastLoginAt: null,
     deletedAt: null,
     active: true,
     createdAt: changedAt,

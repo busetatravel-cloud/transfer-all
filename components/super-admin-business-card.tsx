@@ -160,18 +160,28 @@ export function SuperAdminBusinessCard({ business }: Props) {
         {hasAdmin ? (
           <>
             <Detail label="Admin email" value={admin?.email ?? "Admin yok"} />
-            <Detail label="Giris sifresi" value={admin?.password || "-"} />
             <Detail
-              label="Sifre degisim"
+              label="Kullanıcı oluşturuldu"
+              value={formatDateTime(admin?.createdAt ?? null)}
+            />
+            <Detail
+              label="Şifre gönderildi"
               value={formatDateTime(admin?.passwordChangedAt ?? null)}
             />
+            <Detail
+              label="Son giriş"
+              value={formatDateTime(admin?.lastLoginAt ?? null)}
+            />
+            <Detail label="Giris sifresi" value={admin?.password || "-"} />
             <Detail label="Admin durumu" value={adminActive ? "Active" : "Passive"} />
           </>
         ) : (
           <>
             <Detail label="Admin email" value="Admin yok" />
             <Detail label="Giris sifresi" value="-" />
-            <Detail label="Sifre degisim" value="Kayitli degil" />
+            <Detail label="Kullanıcı oluşturuldu" value="Kayitli degil" />
+            <Detail label="Şifre gönderildi" value="Kayitli degil" />
+            <Detail label="Son giriş" value="Kayitli degil" />
             <Detail label="Admin durumu" value="Silindi" />
           </>
         )}
@@ -209,33 +219,33 @@ export function SuperAdminBusinessCard({ business }: Props) {
         ) : null}
 
         <div className="mt-4 grid gap-3">
-          {!hasAdmin ? (
-            <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-700">Admin olustur</p>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-slate-700">Admin email</span>
-                <input
-                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
-                  value={adminEmail}
-                  onChange={(event) => setAdminEmail(event.target.value)}
-                  placeholder="admin@firma.com"
-                />
-              </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-slate-700">Admin sifresi</span>
-                <input
-                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
-                  type="password"
-                  value={adminPassword}
-                  onChange={(event) => setAdminPassword(event.target.value)}
-                  placeholder="Yeni sifre"
-                />
-              </label>
-              <ActionButton disabled={isPending} onClick={createAdmin}>
-                Admin olustur
-              </ActionButton>
-            </div>
-          ) : null}
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-700">
+              {hasAdmin ? "Admini yeniden oluştur" : "Admin oluştur"}
+            </p>
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-slate-700">Admin email</span>
+              <input
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                value={adminEmail}
+                onChange={(event) => setAdminEmail(event.target.value)}
+                placeholder="admin@firma.com"
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-slate-700">Admin sifresi</span>
+              <input
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400"
+                type="password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+                placeholder="Yeni sifre"
+              />
+            </label>
+            <ActionButton disabled={isPending} onClick={createAdmin}>
+              {hasAdmin ? "Admini yeniden oluştur" : "Admin oluştur"}
+            </ActionButton>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <ActionButton

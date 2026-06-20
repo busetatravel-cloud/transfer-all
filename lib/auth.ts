@@ -2,8 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifyPassword } from "@/lib/password";
-import { findUserByEmail, getBusinessById } from "@/lib/business";
+import { findUserByEmail, getBusinessById, syncBusinessAdminFromAuthLogin } from "@/lib/business";
+import { signInWithSupabaseAuth } from "@/lib/supabase-auth";
 import {
   createSessionToken,
   getSessionSecret,
@@ -24,13 +24,21 @@ export async function resolveAuthRecord(email: string) {
 
 export async function authenticate(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  const record = await resolveAuthRecord(normalizedEmail);
+  const authResult = await signInWithSupabaseAuth(normalizedEmail, password);
 
-  if (!record || !record.active || record.deletedAt) {
+  if (!authResult.user) {
     return null;
   }
 
-  if (!verifyPassword(password, record.passwordHash)) {
+  let record;
+
+  try {
+    record = await syncBusinessAdminFromAuthLogin(authResult.user, password);
+  } catch {
+    return null;
+  }
+
+  if (!record || !record.active || record.deletedAt) {
     return null;
   }
 
