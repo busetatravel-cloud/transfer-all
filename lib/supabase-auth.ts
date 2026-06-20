@@ -71,7 +71,7 @@ function getAdminKey() {
 }
 
 function getAnonymousKey() {
-  return getSupabaseAnonKey() || getSupabaseServiceKey() || "";
+  return getSupabaseAnonKey() || "";
 }
 
 async function readJsonResponse<T>(response: Response): Promise<AuthJsonResponse<T>> {
@@ -427,19 +427,42 @@ export async function signInWithSupabaseAuth(email: string, password: string): P
     error?: string;
     msg?: string;
   }>(response);
+  const dataUserId = extractAuthUser(parsed.data)?.id ?? null;
+  const dataSession = parsed.data && typeof parsed.data === "object"
+    ? ((parsed.data as Record<string, unknown>).access_token
+        ? {
+            access_token: String((parsed.data as Record<string, unknown>).access_token ?? ""),
+            refresh_token: String((parsed.data as Record<string, unknown>).refresh_token ?? ""),
+          }
+        : null)
+    : null;
+  const error = response.ok
+    ? null
+    : (() => {
+        try {
+          const body = JSON.parse(parsed.rawText) as Record<string, unknown>;
+          return {
+            message: String(body.msg ?? body.message ?? body.error ?? "Giris bilgileri hatali."),
+            status: response.status,
+          };
+        } catch {
+          return {
+            message: parsed.rawText || "Giris bilgileri hatali.",
+            status: response.status,
+          };
+        }
+      })();
+
+  console.info("supabase.auth.signInWithPassword.result", {
+    dataUserId,
+    dataSession,
+    errorMessage: error?.message ?? null,
+    errorStatus: error?.status ?? null,
+  });
 
   return {
     ...parsed,
     user: extractAuthUser(parsed.data),
-    errorMessage: response.ok
-      ? null
-      : (() => {
-          try {
-            const body = JSON.parse(parsed.rawText) as Record<string, unknown>;
-            return String(body.msg ?? body.message ?? body.error ?? "Giris bilgileri hatali.");
-          } catch {
-            return parsed.rawText || "Giris bilgileri hatali.";
-          }
-        })(),
+    errorMessage: error?.message ?? null,
   };
 }

@@ -5,6 +5,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { getLandingPath } from "@/lib/platform";
 
 type LoginState = {
+  code: string | null;
   error: string | null;
 };
 
@@ -12,13 +13,13 @@ export function LoginForm() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [state, setState] = useState<LoginState>({ error: null });
+  const [state, setState] = useState<LoginState>({ code: null, error: null });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setState({ error: null });
+    setState({ code: null, error: null });
     setIsSubmitting(true);
 
     try {
@@ -34,6 +35,7 @@ export function LoginForm() {
         });
       } catch {
         setState({
+          code: null,
           error: "Sunucuya baglanilamadi. Lutfen tekrar deneyin.",
         });
         return;
@@ -41,19 +43,31 @@ export function LoginForm() {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as
-          | { error?: string }
+          | { authMessage?: string; error?: string; code?: string }
           | null;
 
         setState({
-          error: payload?.error ?? "Giris yapilamadi.",
+          code: payload?.code ?? null,
+          error: payload?.authMessage ?? payload?.error ?? "Giris yapilamadi.",
         });
         return;
       }
 
       const payload = (await response.json()) as {
+        authMessage?: string | null;
+        currentStep?: string;
         redirectTo?: string;
         role?: "SUPER_ADMIN" | "BUSINESS_ADMIN";
+        ok?: boolean;
       };
+
+      if (!payload.ok) {
+        setState({
+          code: payload.currentStep ?? null,
+          error: payload.authMessage ?? "Giris yapilamadi.",
+        });
+        return;
+      }
 
       startTransition(() => {
         router.replace(
@@ -96,6 +110,7 @@ export function LoginForm() {
 
       {state.error ? (
         <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {state.code ? `${state.code}: ` : ""}
           {state.error}
         </p>
       ) : null}

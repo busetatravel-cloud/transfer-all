@@ -11,28 +11,66 @@ export async function POST(request: Request) {
 
     const email = body?.email?.trim().toLowerCase() ?? "";
     const password = body?.password ?? "";
+    let currentStep = "entered";
+
+    console.log({
+      step: currentStep,
+      email,
+      hasPassword: Boolean(password),
+      authError: null,
+      authErrorMessage: null,
+      authUserId: null,
+      sessionExists: false,
+    });
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: "Email ve sifre gerekli." },
+        {
+          ok: false,
+          currentStep: "validation_failed",
+          authError: true,
+          authMessage: "Email ve sifre gerekli.",
+          sessionCreated: false,
+        },
         { status: 400 },
       );
     }
 
-    const session = await authenticate(email, password);
+    const result = await authenticate(email, password);
+    currentStep = result.currentStep;
 
-    if (!session) {
+    console.log({
+      step: currentStep,
+      email,
+      hasPassword: Boolean(password),
+      authError: result.authError,
+      authErrorMessage: result.authMessage,
+      authUserId: result.authUserId,
+      sessionExists: result.sessionCreated,
+    });
+
+    if (!result.ok || !result.session) {
       return NextResponse.json(
-        { error: "Giris bilgileri hatali." },
+        {
+          ok: false,
+          currentStep,
+          authError: true,
+          authMessage: result.authMessage ?? "Giris islemi tamamlanamadi.",
+          sessionCreated: false,
+        },
         { status: 401 },
       );
     }
 
-    const token = createLoginToken(session);
+    const token = createLoginToken(result.session);
     const response = NextResponse.json({
       ok: true,
-      role: session.role,
-      redirectTo: getLandingPath(session.role),
+      currentStep,
+      authError: false,
+      authMessage: null,
+      sessionCreated: true,
+      role: result.session.role,
+      redirectTo: getLandingPath(result.session.role),
     });
 
     response.cookies.set(SESSION_COOKIE_NAME, token, {
@@ -47,7 +85,13 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("/api/auth/login error:", error);
     return NextResponse.json(
-      { error: "Login islemi su anda tamamlanamadi." },
+      {
+        ok: false,
+        currentStep: "exception",
+        authError: true,
+        authMessage: error instanceof Error ? error.message : "Login islemi su anda tamamlanamadi.",
+        sessionCreated: false,
+      },
       { status: 500 },
     );
   }

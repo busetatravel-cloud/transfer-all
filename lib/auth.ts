@@ -18,47 +18,114 @@ export type BusinessSessionPayload = SessionPayload & {
   businessId: string;
 };
 
+export type LoginFlowResult = {
+  ok: boolean;
+  currentStep: string;
+  authError: boolean;
+  authMessage: string | null;
+  sessionCreated: boolean;
+  session: SessionPayload | null;
+  authUserId: string | null;
+};
+
 export async function resolveAuthRecord(email: string) {
   return findUserByEmail(email.trim().toLowerCase());
 }
 
-export async function authenticate(email: string, password: string) {
+export async function authenticate(email: string, password: string): Promise<LoginFlowResult> {
   const normalizedEmail = email.trim().toLowerCase();
   const authResult = await signInWithSupabaseAuth(normalizedEmail, password);
+  console.log("auth.login.auth_result", {
+    step: "auth_response_received",
+    email: normalizedEmail,
+    hasPassword: Boolean(password),
+    authError: Boolean(authResult.errorMessage),
+    authErrorMessage: authResult.errorMessage,
+    authUserId: authResult.user?.id ?? null,
+    sessionExists: Boolean((authResult.data as Record<string, unknown> | null)?.access_token),
+  });
 
   if (!authResult.user) {
-    return null;
+    return {
+      ok: false,
+      currentStep: "auth_response_failed",
+      authError: true,
+      authMessage: authResult.errorMessage ?? "Giris bilgileri hatali.",
+      sessionCreated: false,
+      session: null,
+      authUserId: null,
+    };
   }
 
   let record;
 
   try {
     record = await syncBusinessAdminFromAuthLogin(authResult.user, password);
-  } catch {
-    return null;
+  } catch (error) {
+    return {
+      ok: false,
+      currentStep: "sync_failed",
+      authError: true,
+      authMessage: error instanceof Error ? error.message : "Giris islemi tamamlanamadi.",
+      sessionCreated: false,
+      session: null,
+      authUserId: authResult.user.id,
+    };
   }
 
   if (!record || !record.active || record.deletedAt) {
-    return null;
+    return {
+      ok: false,
+      currentStep: "user_inactive",
+      authError: true,
+      authMessage: "Hesap pasif veya silinmis.",
+      sessionCreated: false,
+      session: null,
+      authUserId: authResult.user.id,
+    };
   }
 
   if (record.role === "BUSINESS_ADMIN" && !record.businessId) {
-    return null;
+    return {
+      ok: false,
+      currentStep: "business_missing",
+      authError: true,
+      authMessage: "Business baglantisi bulunamadi.",
+      sessionCreated: false,
+      session: null,
+      authUserId: authResult.user.id,
+    };
   }
 
   if (record.role === "BUSINESS_ADMIN" && record.businessId) {
     const business = await getBusinessById(record.businessId);
     if (!business || !business.active) {
-      return null;
+      return {
+        ok: false,
+        currentStep: "business_inactive",
+        authError: true,
+        authMessage: "Business aktif degil.",
+        sessionCreated: false,
+        session: null,
+        authUserId: authResult.user.id,
+      };
     }
   }
 
   return {
-    userId: record.id,
-    role: record.role,
-    businessId: record.businessId,
-    email: record.email.toLowerCase(),
-  } satisfies SessionPayload;
+    ok: true,
+    currentStep: "completed",
+    authError: false,
+    authMessage: null,
+    sessionCreated: true,
+    session: {
+      userId: record.id,
+      role: record.role,
+      businessId: record.businessId,
+      email: record.email.toLowerCase(),
+    } satisfies SessionPayload,
+    authUserId: authResult.user.id,
+  };
 }
 
 export async function getSession() {
