@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 type LoginState = {
   code: string | null;
@@ -9,8 +8,6 @@ type LoginState = {
 };
 
 export function LoginForm() {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [state, setState] = useState<LoginState>({ code: null, error: null });
   const [email, setEmail] = useState("");
@@ -22,66 +19,45 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     try {
-      let response: Response;
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-      try {
-        response = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email, password }),
-        });
-      } catch {
-        setState({
-          code: null,
-          error: "Sunucuya baglanilamadi. Lutfen tekrar deneyin.",
-        });
-        return;
-      }
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { authMessage?: string; error?: string; code?: string }
-          | null;
-
-        setState({
-          code: payload?.code ?? null,
-          error: payload?.authMessage ?? payload?.error ?? "Giris yapilamadi.",
-        });
-        return;
-      }
-
-      const payload = (await response.json()) as {
+      const data = (await res.json()) as {
         ok?: boolean;
-        userId?: string | null;
         role?: "SUPER_ADMIN" | "BUSINESS_ADMIN";
-        businessId?: string | null;
         error?: string;
       };
 
-      if (!payload.ok || !payload.role) {
+      console.log("LOGIN_RESPONSE", data);
+
+      if (!res.ok) {
         setState({
           code: null,
-          error: payload.error ?? "Giris yapilamadi.",
+          error: data.error || "Login failed",
         });
         return;
       }
 
-      startTransition(() => {
-        if (payload.role === "SUPER_ADMIN") {
-          router.push("/super-admin");
-        } else if (payload.role === "BUSINESS_ADMIN") {
-          router.push("/app");
-        } else {
-          setState({
-            code: null,
-            error: "Giris yapildi ama yonlendirme bulunamadi.",
-          });
-          return;
-        }
-        router.refresh();
-      });
+      if (data.role === "SUPER_ADMIN") {
+        window.location.href = "/super-admin";
+        return;
+      }
+
+      if (data.role === "BUSINESS_ADMIN") {
+        window.location.href = "/app";
+        return;
+      }
+
+      window.location.reload();
     } finally {
       setIsSubmitting(false);
     }
@@ -124,10 +100,10 @@ export function LoginForm() {
 
       <button
         className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-        disabled={isPending || isSubmitting}
+        disabled={isSubmitting}
         type="submit"
       >
-        {isPending || isSubmitting ? "Giris yapiliyor..." : "Giris yap"}
+        {isSubmitting ? "Giris yapiliyor..." : "Giris yap"}
       </button>
     </form>
   );
