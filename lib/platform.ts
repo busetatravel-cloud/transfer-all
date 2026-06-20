@@ -35,7 +35,12 @@ export function normalizeDomain(domain: string | null | undefined) {
 
 export function isPlatformHost(host: string | null | undefined) {
   const normalized = normalizeHost(host);
-  return PLATFORM_HOSTS.has(normalized);
+  return (
+    PLATFORM_HOSTS.has(normalized) ||
+    normalized.endsWith(".vercel.app") ||
+    normalized.endsWith(".netlify.app") ||
+    normalized.endsWith(".onrender.com")
+  );
 }
 
 export function isReservedPlatformDomain(domain: string | null | undefined) {
