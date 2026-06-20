@@ -120,6 +120,19 @@ export type BusinessCreateResult = {
   admin: Omit<UserRecord, "passwordHash">;
 };
 
+export type SupabaseListFetchError = {
+  code: string;
+  message: string;
+  status: number;
+  rawText: string;
+};
+
+export type SuperAdminBusinessesLoadResult = {
+  businesses: BusinessListRecord[];
+  totalCount: number;
+  error: SupabaseListFetchError | null;
+};
+
 const demoBusinesses: BusinessRecord[] = [
   {
     id: "business-demo-1",
@@ -288,6 +301,90 @@ async function readRows(path: string) {
     return Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
   } catch {
     return [];
+  }
+}
+
+async function readRowsDetailed(path: string) {
+  const response = await supabaseFetch(path);
+
+  if (!response) {
+    return {
+      ok: false,
+      status: 0,
+      rawText: "Supabase baglantisi kurulamadı.",
+      rows: [] as Array<Record<string, unknown>>,
+      error: {
+        code: "supabase_unavailable",
+        message: "Supabase baglantisi kurulamadı.",
+        status: 0,
+        rawText: "Supabase baglantisi kurulamadı.",
+      } satisfies SupabaseListFetchError,
+    };
+  }
+
+  const rawText = await response.text().catch(() => "");
+  const trimmed = rawText.trim();
+
+  if (!response.ok) {
+    let code = "supabase_error";
+    let message = trimmed || "Supabase sorgusu basarisiz oldu.";
+
+    if (trimmed) {
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        code = String(parsed.code ?? parsed.error ?? parsed.status ?? code);
+        message = String(parsed.message ?? parsed.msg ?? parsed.error ?? message);
+      } catch {
+        message = trimmed;
+      }
+    }
+
+    return {
+      ok: false,
+      status: response.status,
+      rawText,
+      rows: [],
+      error: {
+        code,
+        message,
+        status: response.status,
+        rawText,
+      } satisfies SupabaseListFetchError,
+    };
+  }
+
+  if (!trimmed) {
+    return {
+      ok: true,
+      status: response.status,
+      rawText: "",
+      rows: [] as Array<Record<string, unknown>>,
+      error: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return {
+      ok: true,
+      status: response.status,
+      rawText,
+      rows: Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [],
+      error: null,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: response.status,
+      rawText,
+      rows: [] as Array<Record<string, unknown>>,
+      error: {
+        code: "supabase_parse_error",
+        message: "Supabase yaniti JSON olarak okunamadi.",
+        status: response.status,
+        rawText,
+      } satisfies SupabaseListFetchError,
+    };
   }
 }
 
@@ -683,18 +780,33 @@ export async function findUserByEmail(email: string) {
   return null;
 }
 
-export async function listBusinesses(): Promise<BusinessListRecord[]> {
+export async function loadSuperAdminBusinesses(): Promise<SuperAdminBusinessesLoadResult> {
   const config = getSupabaseConfig();
 
   if (config) {
-    const [businessRows, adminRows] = await Promise.all([
-      readRows(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
+    const [businessResult, adminRows] = await Promise.all([
+      readRowsDetailed(
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
         `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
       ),
     ]);
+
+    if (!businessResult.ok) {
+      console.error("super-admin.businesses.fetch.failed", {
+        code: businessResult.error?.code,
+        message: businessResult.error?.message,
+        status: businessResult.status,
+        rawText: businessResult.error?.rawText,
+      });
+
+      return {
+        businesses: [],
+        totalCount: 0,
+        error: businessResult.error,
+      };
+    }
 
     await Promise.allSettled(
       adminRows.map(async (row) => {
@@ -722,7 +834,7 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
       }
     }
 
-    return businessRows.map((row) => {
+    const businesses = businessResult.rows.map((row) => {
       const business = fromSupabaseBusiness(row);
       const admin = adminByBusinessId.get(business.id);
       const adminSummary = admin && !admin.deleted_at
@@ -754,9 +866,15 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
         adminActive: adminSummary?.active ?? null,
       } satisfies BusinessListRecord;
     });
+
+    return {
+      businesses,
+      totalCount: businessResult.rows.length,
+      error: null,
+    };
   }
 
-  return demoBusinesses.map((business) => {
+  const businesses = demoBusinesses.map((business) => {
     const admin = demoUsers.find(
       (user) => user.businessId === business.id && user.role === "BUSINESS_ADMIN",
     );
@@ -789,6 +907,17 @@ export async function listBusinesses(): Promise<BusinessListRecord[]> {
       adminActive: adminSummary?.active ?? null,
     } satisfies BusinessListRecord;
   });
+
+  return {
+    businesses,
+    totalCount: businesses.length,
+    error: null,
+  };
+}
+
+export async function listBusinesses(): Promise<BusinessListRecord[]> {
+  const result = await loadSuperAdminBusinesses();
+  return result.businesses;
 }
 
 export async function getBusinessById(id: string) {

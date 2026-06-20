@@ -1,6 +1,6 @@
 import { BusinessCreateForm } from "@/components/business-create-form";
 import { SuperAdminBusinessCard } from "@/components/super-admin-business-card";
-import { listBusinesses } from "@/lib/business";
+import { loadSuperAdminBusinesses } from "@/lib/business";
 import { listPlans } from "@/lib/plans";
 import { requireRole } from "@/lib/auth";
 
@@ -16,9 +16,13 @@ const metrics = [
 
 export default async function SuperAdminPage() {
   await requireRole("SUPER_ADMIN");
-  const [businesses, plans] = await Promise.all([listBusinesses(), listPlans()]);
+  const [businessLoad, plans] = await Promise.all([
+    loadSuperAdminBusinesses(),
+    listPlans(),
+  ]);
+  const businesses = businessLoad.businesses;
   const overviewMetrics = [
-    { ...metrics[0], value: String(businesses.length) },
+    { ...metrics[0], value: String(businessLoad.totalCount) },
     { ...metrics[1], value: String(plans.filter((plan) => plan.active).length) },
     metrics[2],
     metrics[3],
@@ -43,6 +47,23 @@ export default async function SuperAdminPage() {
 
       <div id="businesses" className="grid gap-6">
         <BusinessCreateForm />
+
+        {businessLoad.error ? (
+          <article className="rounded-[24px] border border-rose-200 bg-rose-50 p-5 text-rose-900">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-rose-700">
+              Supabase business fetch hatasi
+            </p>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight">
+              İşletmeler listesi okunamadı
+            </h3>
+            <p className="mt-2 text-sm leading-7 text-rose-800">
+              {businessLoad.error.message}
+            </p>
+            <p className="mt-2 text-xs text-rose-700">
+              Code: {businessLoad.error.code} · Status: {businessLoad.error.status}
+            </p>
+          </article>
+        ) : null}
 
         <div className="grid gap-4 lg:grid-cols-2">
           {businesses.map((business) => (
