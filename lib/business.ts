@@ -867,9 +867,16 @@ export async function loadSuperAdminBusinesses(): Promise<SuperAdminBusinessesLo
       } satisfies BusinessListRecord;
     });
 
+    console.log("loadSuperAdminBusinesses.result", {
+      businessCount: businesses.length,
+      totalCount: businessResult.rows.length,
+      businessIds: businesses.map((business) => business.id),
+      error: null,
+    });
+
     return {
       businesses,
-      totalCount: businessResult.rows.length,
+      totalCount: businesses.length,
       error: null,
     };
   }
@@ -906,6 +913,13 @@ export async function loadSuperAdminBusinesses(): Promise<SuperAdminBusinessesLo
       adminRole: adminSummary?.role ?? null,
       adminActive: adminSummary?.active ?? null,
     } satisfies BusinessListRecord;
+  });
+
+  console.log("loadSuperAdminBusinesses.result", {
+    businessCount: businesses.length,
+    totalCount: businesses.length,
+    businessIds: businesses.map((business) => business.id),
+    error: null,
   });
 
   return {

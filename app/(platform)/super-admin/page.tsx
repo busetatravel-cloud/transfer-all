@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const metrics = [
   { label: "Businesses", value: "12", note: "Aktif hesap sayisi" },
@@ -16,13 +17,24 @@ const metrics = [
 
 export default async function SuperAdminPage() {
   await requireRole("SUPER_ADMIN");
+
   const [businessLoad, plans] = await Promise.all([
     loadSuperAdminBusinesses(),
     listPlans(),
   ]);
+
   const businesses = businessLoad.businesses;
+  const businessCount = businesses.length;
+
+  console.log("super-admin.page.business-load", {
+    businessCount,
+    totalCount: businessLoad.totalCount,
+    error: businessLoad.error,
+    businessIds: businesses.map((business) => business.id),
+  });
+
   const overviewMetrics = [
-    { ...metrics[0], value: String(businessLoad.totalCount) },
+    { ...metrics[0], value: String(businessCount) },
     { ...metrics[1], value: String(plans.filter((plan) => plan.active).length) },
     metrics[2],
     metrics[3],
@@ -70,6 +82,21 @@ export default async function SuperAdminPage() {
             <SuperAdminBusinessCard key={business.id} business={business} />
           ))}
         </div>
+
+        {businesses.length === 0 ? (
+          <article className="rounded-[24px] border border-slate-200 bg-slate-50 p-6 text-slate-700">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Empty state
+            </p>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+              Business bulunamadi
+            </h3>
+            <p className="mt-2 text-sm leading-7">
+              Loader verisi bos geldi. Bu durumda debug endpoint sonucunu ve server
+              loglarini kontrol ediyoruz.
+            </p>
+          </article>
+        ) : null}
 
         <article
           id="settings"
