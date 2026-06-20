@@ -7,11 +7,10 @@ import type { BusinessRecord } from "@/lib/business";
 import {
   buildDomainAdapters,
   getBusinessPublicTarget,
-  getProductionTargetDomain,
-  hasProductionTargetDomain,
   formatDomainStatusLabel,
   formatSslStatusLabel,
   getDomainStepIndex,
+  getDnsCnameTarget,
   DOMAIN_PROVIDER_OPTIONS,
   type DomainProvider,
 } from "@/lib/domain-utils";
@@ -90,6 +89,7 @@ export function DomainCenter({ business }: Props) {
       buildDomainAdapters(
         currentHostname || "firma.com",
         business.verificationToken || "verification-token",
+        { cnameTarget: getDnsCnameTarget() },
       ),
     [business.verificationToken, currentHostname],
   );
@@ -100,8 +100,6 @@ export function DomainCenter({ business }: Props) {
     business.domainStatus === "active" &&
     (business.sslStatus === "ready" || business.sslStatus === "active");
   const activeLink = getBusinessPublicTarget(currentHostname) ?? null;
-  const productionTarget = getProductionTargetDomain();
-  const productionTargetReady = hasProductionTargetDomain();
 
   async function submit(
     action: "save" | "check_dns" | "check_ssl" | "remove",
@@ -344,22 +342,6 @@ export function DomainCenter({ business }: Props) {
               <MetaItem label="Activated at" value={formatDateTime(business.activatedAt)} />
               <MetaItem label="Last check" value={formatDateTime(business.lastCheckedAt)} />
               <MetaItem label="SSL status" value={sslLabel} />
-            </div>
-
-            <div
-              className={[
-                "rounded-[24px] border px-4 py-3 text-sm leading-6",
-                productionTargetReady
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-amber-200 bg-amber-50 text-amber-800",
-              ].join(" ")}
-            >
-              <div className="font-semibold">Production hedef</div>
-              <div className="mt-1 break-words">
-                {productionTarget
-                  ? `PUBLIC_DOMAIN_TARGET: ${productionTarget}`
-                  : "Production hedef domain/IP ayarlanmadı."}
-              </div>
             </div>
 
             {activeLink ? (

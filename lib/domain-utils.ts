@@ -198,6 +198,10 @@ export function getBusinessPublicTarget(
   return null;
 }
 
+export function getDnsCnameTarget() {
+  return getProductionTargetDomain() ?? "cname.vercel-dns.com";
+}
+
 function buildProviderGuide(provider: DomainProvider, hostname: string, token: string) {
   const apexHost = getApexHost(hostname);
   const subHost = getSubdomainHost(hostname);
@@ -283,11 +287,15 @@ function buildProviderGuide(provider: DomainProvider, hostname: string, token: s
 export function buildDomainAdapters(
   hostname: string,
   verificationToken: string,
+  options?: {
+    cnameTarget?: string | null;
+  },
 ): DomainAdapter[] {
   const safeHostname = normalizeHost(hostname) || "firma.com";
   const safeToken = buildDomainVerificationToken(verificationToken);
   const apexHost = getApexHost(safeHostname);
   const subHost = getSubdomainHost(safeHostname);
+  const cnameTarget = normalizeDomain(options?.cnameTarget) || "cname.vercel-dns.com";
 
   return [
     {
@@ -304,7 +312,7 @@ export function buildDomainAdapters(
         {
           type: "CNAME",
           host: subHost,
-          value: "cname.vercel-dns.com",
+          value: cnameTarget,
           note: "Subdomain için CNAME",
         },
         {
@@ -329,7 +337,7 @@ export function buildDomainAdapters(
         {
           type: "CNAME",
           host: subHost,
-          value: "cname.vercel-dns.com",
+          value: cnameTarget,
           note: "Subdomain için CNAME",
         },
         {
@@ -346,7 +354,7 @@ export function buildDomainAdapters(
       guide: buildProviderGuide("godaddy", safeHostname, safeToken).guide,
       records: [
         { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
-        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "CNAME", host: subHost, value: cnameTarget, note: "Subdomain için CNAME" },
         { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
@@ -356,7 +364,7 @@ export function buildDomainAdapters(
       guide: buildProviderGuide("namecheap", safeHostname, safeToken).guide,
       records: [
         { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
-        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "CNAME", host: subHost, value: cnameTarget, note: "Subdomain için CNAME" },
         { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
@@ -366,7 +374,7 @@ export function buildDomainAdapters(
       guide: buildProviderGuide("turhost", safeHostname, safeToken).guide,
       records: [
         { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
-        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "CNAME", host: subHost, value: cnameTarget, note: "Subdomain için CNAME" },
         { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
@@ -376,7 +384,7 @@ export function buildDomainAdapters(
       guide: buildProviderGuide("natro", safeHostname, safeToken).guide,
       records: [
         { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
-        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "CNAME", host: subHost, value: cnameTarget, note: "Subdomain için CNAME" },
         { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
@@ -386,7 +394,7 @@ export function buildDomainAdapters(
       guide: buildProviderGuide("isimtescil", safeHostname, safeToken).guide,
       records: [
         { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
-        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "CNAME", host: subHost, value: cnameTarget, note: "Subdomain için CNAME" },
         { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
@@ -396,7 +404,7 @@ export function buildDomainAdapters(
       guide: buildProviderGuide("hostinger", safeHostname, safeToken).guide,
       records: [
         { type: "A", host: apexHost, value: "76.76.21.21", note: "Root domain için A kaydı" },
-        { type: "CNAME", host: subHost, value: "cname.vercel-dns.com", note: "Subdomain için CNAME" },
+        { type: "CNAME", host: subHost, value: cnameTarget, note: "Subdomain için CNAME" },
         { type: "TXT", host: `_verify.${safeHostname.replace(/^www\./i, "")}`, value: safeToken, note: "TXT doğrulama tokeni" },
       ],
     },
