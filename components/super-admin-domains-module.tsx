@@ -72,7 +72,7 @@ export function SuperAdminDomainsModule({ businesses }: Props) {
 
   async function runAction(
     businessId: string,
-    action: "force_active" | "passive" | "provider_add" | "provider_retry" | "provider_remove",
+    action: "passive" | "provider_add" | "provider_retry" | "provider_remove",
   ) {
     setState({ status: "saving", message: "İşlem hazırlanıyor..." });
 
@@ -98,9 +98,7 @@ export function SuperAdminDomainsModule({ businesses }: Props) {
       setState({
         status: "success",
         message:
-          action === "force_active"
-            ? "Domain zorla aktif edildi."
-            : action === "passive"
+          action === "passive"
               ? "Domain pasif edildi."
               : action === "provider_remove"
                 ? "Provider bağlantısı kaldırıldı."
@@ -183,14 +181,6 @@ export function SuperAdminDomainsModule({ businesses }: Props) {
               </dl>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isPending || !hasDomain}
-                  onClick={() => void runAction(business.id, "force_active")}
-                  type="button"
-                >
-                  Zorla aktif et
-                </button>
                 <button
                   className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isPending || !hasDomain}

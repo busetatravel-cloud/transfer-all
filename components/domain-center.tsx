@@ -11,12 +11,17 @@ import {
   formatSslStatusLabel,
   getDomainStepIndex,
   getDnsCnameTarget,
+  isDomainDnsHealthy,
+  isDomainProviderConnected,
+  isDomainPubliclyReachable,
+  isDomainSslReady,
   DOMAIN_PROVIDER_OPTIONS,
   type DomainProvider,
 } from "@/lib/domain-utils";
 
 type Props = {
   business: BusinessRecord;
+  vercelConnectionReady?: boolean;
 };
 
 type SubmitState = {
@@ -72,7 +77,7 @@ async function copyToClipboard(value: string) {
   await navigator.clipboard.writeText(value);
 }
 
-export function DomainCenter({ business }: Props) {
+export function DomainCenter({ business, vercelConnectionReady = true }: Props) {
   const router = useRouter();
   const [hostname, setHostname] = useState(business.hostname ?? business.domain ?? "");
   const [provider, setProvider] = useState<DomainProvider>("vercel");
@@ -84,6 +89,15 @@ export function DomainCenter({ business }: Props) {
   const [isPending, startTransition] = useTransition();
 
   const currentHostname = hostname.trim() || business.hostname || business.domain || "";
+  const publicReady = isDomainPubliclyReachable({
+    domainStatus: business.domainStatus,
+    domainProviderStatus: business.domainProviderStatus,
+    sslStatus: business.sslStatus,
+  });
+  const renderDomainStatus =
+    publicReady || business.domainStatus !== "active"
+      ? business.domainStatus
+      : "ssl_ready";
   const adapters = useMemo(
     () =>
       buildDomainAdapters(
@@ -94,12 +108,19 @@ export function DomainCenter({ business }: Props) {
     [business.verificationToken, currentHostname],
   );
   const adapter = adapters.find((item) => item.provider === provider) ?? adapters[0];
-  const stepIndex = getDomainStepIndex(business.domainStatus);
-  const isOpenable =
-    Boolean(currentHostname.trim()) &&
-    business.domainStatus === "active" &&
-    (business.sslStatus === "ready" || business.sslStatus === "active");
-  const activeLink = getBusinessPublicTarget(currentHostname) ?? null;
+  const stepIndex = getDomainStepIndex(renderDomainStatus);
+  const isOpenable = Boolean(currentHostname.trim()) && publicReady;
+  const activeLink = publicReady ? getBusinessPublicTarget(currentHostname) ?? null : null;
+  const providerConnected = isDomainProviderConnected(business.domainProviderStatus);
+  const dnsReady = isDomainDnsHealthy(business.domainStatus);
+  const sslReady = isDomainSslReady(business.sslStatus);
+  const statusLabel = formatDomainStatusLabel(renderDomainStatus);
+  const sslLabel = formatSslStatusLabel(business.sslStatus);
+  const providerLabel = providerConnected ? "Vercel project bağlantısı var" : "Vercel project bağlantısı yok";
+  const dnsLabel = dnsReady ? "DNS doğru" : "DNS doğru değil";
+  const sslStateLabel = sslReady ? "SSL hazır" : "SSL hazır değil";
+  const appLabel = publicReady ? "App’e ulaşıyor" : "App’e ulaşmıyor";
+  const vercelConnectionMissing = !vercelConnectionReady;
 
   async function submit(
     action: "save" | "check_dns" | "check_ssl" | "remove",
@@ -177,8 +198,6 @@ export function DomainCenter({ business }: Props) {
   }
 
   const currentDisplay = business.hostname ?? business.domain ?? "Henüz bağlı değil";
-  const statusLabel = formatDomainStatusLabel(business.domainStatus);
-  const sslLabel = formatSslStatusLabel(business.sslStatus);
 
   return (
     <section className="grid gap-6">
@@ -199,19 +218,21 @@ export function DomainCenter({ business }: Props) {
 
           <div className="grid gap-2 sm:grid-cols-2">
             <StatusBadge label="Durum" value={statusLabel} />
-            <StatusBadge label="SSL" value={sslLabel} />
+            <StatusBadge label="SSL" value={sslStateLabel} />
+            <StatusBadge label="DNS" value={dnsLabel} />
+            <StatusBadge label="Vercel" value={providerLabel} />
           </div>
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-5">
           {STEPS.map((step, index) => {
             const completed =
-              business.domainStatus === "active"
+              publicReady
                 ? true
-                : business.domainStatus === "failed"
+                : renderDomainStatus === "failed"
                   ? false
                   : index <= stepIndex;
-            const active = index === Math.max(stepIndex, 0) && business.domainStatus !== "active";
+            const active = index === Math.max(stepIndex, 0) && !publicReady;
 
             return (
               <div
@@ -246,8 +267,8 @@ export function DomainCenter({ business }: Props) {
                 {currentDisplay}
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Domain kaydedin, DNS kayıtlarını kontrol edin, TXT doğrulamayı tamamlayın ve SSL
-                hazır hale geldiğinde aktif edin.
+                Domain kaydedin, DNS kayıtlarını kontrol edin, TXT doğrulamayı tamamlayın, Vercel
+                project bağlantısını kurun ve SSL hazır olduğunda aktif edin.
               </p>
             </div>
 
@@ -344,11 +365,17 @@ export function DomainCenter({ business }: Props) {
               <MetaItem label="Activated at" value={formatDateTime(business.activatedAt)} />
               <MetaItem label="Last check" value={formatDateTime(business.lastCheckedAt)} />
               <MetaItem label="SSL status" value={sslLabel} />
+              <MetaItem label="Public access" value={appLabel} />
             </div>
 
-            {business.domainProviderStatus === "manual" ? (
+            {vercelConnectionMissing ? (
               <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-                Vercel env bulunmadığı için domain provider otomasyonu manuel modda çalışıyor.
+                Vercel bağlantısı eksik. VERCEL_API_TOKEN ve VERCEL_PROJECT_ID olmadan domain
+                otomasyonu çalışmaz.
+              </div>
+            ) : !providerConnected ? (
+              <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                Vercel project bağlantısı yok. Domain önce Vercel project&apos;e eklenmeli.
               </div>
             ) : null}
 
@@ -368,7 +395,7 @@ export function DomainCenter({ business }: Props) {
                     event.preventDefault();
                   }
                 }}
-              >
+                >
                 Siteyi Aç
               </a>
             ) : (

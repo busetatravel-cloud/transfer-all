@@ -77,22 +77,14 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "force_active") {
-    const business = await updateBusinessDomainRecord(businessId, {
-      domain: current.hostname ?? current.domain ?? "",
-      hostname: current.hostname ?? current.domain ?? "",
-      domainStatus: "active",
-      verifiedAt: current.verifiedAt ?? new Date().toISOString(),
-      activatedAt: new Date().toISOString(),
-      lastCheckedAt: new Date().toISOString(),
-      sslStatus: "active",
-    });
-
-    return NextResponse.json({
-      ok: true,
-      business,
-      message: "Domain aktif edildi.",
-      statusLabel: formatDomainStatusLabel(business.domainStatus),
-    });
+    return NextResponse.json(
+      {
+        error: "validation_error",
+        message: "Force active kaldırıldı. Domain ancak gerçek provider/DNS/SSL sonucu ile aktif olabilir.",
+        code: "domain_force_active_disabled",
+      },
+      { status: 400 },
+    );
   }
 
   if (action === "passive") {

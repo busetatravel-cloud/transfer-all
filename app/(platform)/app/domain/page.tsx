@@ -1,6 +1,7 @@
 import { DomainCenter } from "@/components/domain-center";
 import { requireBusinessSession } from "@/lib/auth";
 import { getBusinessById } from "@/lib/business";
+import { hasVercelDomainAutomation } from "@/lib/domain-provider";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,5 +18,5 @@ export default async function DomainPage() {
     );
   }
 
-  return <DomainCenter business={business} />;
+  return <DomainCenter business={business} vercelConnectionReady={hasVercelDomainAutomation()} />;
 }

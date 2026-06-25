@@ -40,6 +40,17 @@ export async function PATCH(
     );
   }
 
+  if (domainStatus === "active") {
+    return NextResponse.json(
+      {
+        error: "validation_error",
+        message: "Active durumu manuel atanamaz. Sadece gerçek provider/DNS/SSL sonucu ile aktif olabilir.",
+        code: "domain_active_manual_forbidden",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const business = await updateBusinessDomainRecord(id, {
       domain: domain || hostname,

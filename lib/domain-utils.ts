@@ -205,6 +205,48 @@ export function getBusinessPublicTarget(hostname: string | null | undefined) {
   return null;
 }
 
+export function isDomainProviderConnected(
+  providerStatus: string | null | undefined,
+) {
+  return String(providerStatus ?? "").trim().toLowerCase() !== "manual";
+}
+
+export function isDomainDnsHealthy(status: string | null | undefined) {
+  switch (String(status ?? "").trim().toLowerCase()) {
+    case "dns_detected":
+    case "verified":
+    case "ssl_ready":
+    case "active":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function isDomainSslReady(status: string | null | undefined) {
+  switch (String(status ?? "").trim().toLowerCase()) {
+    case "ready":
+    case "active":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function isDomainPubliclyReachable(input: {
+  domainStatus?: string | null;
+  domainProviderStatus?: string | null;
+  sslStatus?: string | null;
+}) {
+  const status = String(input.domainStatus ?? "").trim().toLowerCase();
+
+  return (
+    status === "active" &&
+    isDomainProviderConnected(input.domainProviderStatus) &&
+    isDomainSslReady(input.sslStatus)
+  );
+}
+
 export function getDnsCnameTarget() {
   return getProductionTargetDomain() ?? "cname.vercel-dns.com";
 }

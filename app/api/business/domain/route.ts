@@ -4,6 +4,7 @@ import tls from "node:tls";
 import { requireApiBusinessSession } from "@/lib/auth";
 import { recordAuditLog } from "@/lib/audit";
 import {
+  getBusinessByDomain,
   getBusinessById,
   updateBusinessDomainRecord,
   updateBusinessOwnDomainRecord,
@@ -20,6 +21,7 @@ import {
   removeBusinessDomainFromProvider,
   syncBusinessDomainWithProvider,
 } from "@/lib/domain-provider";
+import { normalizeDomain } from "@/lib/platform";
 
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -196,7 +198,7 @@ export async function PATCH(request: Request) {
 
   try {
     if (action === "save") {
-      const hostname = normalizeString(body?.hostname);
+      const hostname = normalizeDomain(normalizeString(body?.hostname));
 
       if (!hostname) {
         return jsonError("domain_hostname_required", "Hostname gerekli.", 400, {
@@ -205,6 +207,26 @@ export async function PATCH(request: Request) {
       }
 
       const current = await getBusinessById(businessId);
+      const duplicate = await getBusinessByDomain(hostname);
+
+      if (duplicate && duplicate.id !== businessId) {
+        return jsonError("domain_duplicate", "Bu domain zaten kullanılıyor.", 409, {
+          fieldErrors: { hostname: "Bu domain zaten kullanılıyor." },
+        });
+      }
+
+      if (!hasVercelDomainAutomation()) {
+        return jsonError(
+          "vercel_connection_missing",
+          "Vercel bağlantısı eksik. VERCEL_API_TOKEN ve VERCEL_PROJECT_ID gerekli.",
+          503,
+          {
+            fieldErrors: { hostname: "Vercel bağlantısı eksik." },
+            providerStatus: "manual",
+          },
+        );
+      }
+
       const verificationToken =
         current?.verificationToken ?? buildDomainVerificationToken();
       const providerSync = await syncBusinessDomainWithProvider(hostname);
@@ -217,12 +239,30 @@ export async function PATCH(request: Request) {
         domains: providerSync.domains,
       });
 
-      const nextDomainStatus: DomainStatus =
-        providerSync.status === "provider_added"
-          ? "provider_added"
-          : providerSync.status === "failed"
-            ? "failed"
-            : "pending";
+      if (providerSync.status !== "provider_added") {
+        return jsonError(
+          "provider_sync_failed",
+          providerSync.message || "Vercel domain eklenemedi.",
+          502,
+          {
+            providerStatus: providerSync.status,
+            providerMode: providerSync.mode,
+          },
+        );
+      }
+
+      const dnsCheck = await checkDnsForHostname(hostname, verificationToken);
+      const sslCheck = await checkSslForHostname(hostname);
+      const now = new Date().toISOString();
+      const nextDomainStatus: DomainStatus = sslCheck.ok && dnsCheck.verified
+        ? "active"
+        : sslCheck.ok
+          ? "ssl_ready"
+          : dnsCheck.verified
+            ? "verified"
+            : dnsCheck.detected
+              ? "dns_detected"
+              : "provider_added";
 
       const business = await updateBusinessDomainRecord(businessId, {
         domain: hostname,
@@ -232,11 +272,11 @@ export async function PATCH(request: Request) {
         domainProvider: providerSync.mode,
         domainProviderStatus: providerSync.status,
         domainProviderMessage: providerSync.message,
-        domainProviderSyncedAt: providerSync.status === "provider_added" ? new Date().toISOString() : null,
-        verifiedAt: null,
-        activatedAt: null,
-        lastCheckedAt: new Date().toISOString(),
-        sslStatus: "pending",
+        domainProviderSyncedAt: now,
+        verifiedAt: dnsCheck.verified ? now : null,
+        activatedAt: nextDomainStatus === "active" ? now : null,
+        lastCheckedAt: now,
+        sslStatus: sslCheck.ok ? "ready" : "checking",
       });
 
       await recordAuditLog({
@@ -257,7 +297,9 @@ export async function PATCH(request: Request) {
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         providerStatus: providerSync.status,
         providerMode: providerSync.mode,
-        warning: providerSync.status !== "provider_added",
+        dnsCheck,
+        sslCheck,
+        warning: nextDomainStatus !== "active",
       });
     }
 
@@ -371,7 +413,7 @@ export async function PATCH(request: Request) {
         verificationToken: current.verificationToken ?? buildDomainVerificationToken(),
         domainStatus: nextDomainStatus,
         verifiedAt: current.verifiedAt ?? (sslCheck.ok ? now : null),
-        activatedAt: nextDomainStatus === "active" ? current.activatedAt ?? now : current.activatedAt,
+        activatedAt: nextDomainStatus === "active" ? current.activatedAt ?? now : null,
         lastCheckedAt: now,
         sslStatus: sslCheck.ok ? "ready" : current.sslStatus === "ready" || current.sslStatus === "active" ? current.sslStatus : "checking",
       });
@@ -427,7 +469,9 @@ export async function PATCH(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Domain işlemi başarısız.";
     const status =
-      /already exists|başka bir business|kullanılıyor|validasyon/i.test(message)
+      /Vercel bağlantısı eksik/i.test(message)
+        ? 503
+        : /already exists|başka bir business|kullanılıyor|validasyon/i.test(message)
         ? 409
         : /bulunamadı|required|gerekli/i.test(message)
           ? 422

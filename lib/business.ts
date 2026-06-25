@@ -13,6 +13,7 @@ import {
   type DomainSslStatus,
   type DomainProviderStatus,
   type DomainStatus,
+  isDomainPubliclyReachable,
 } from "@/lib/domain-utils";
 import {
   createSupabaseAuthUser,
@@ -1087,7 +1088,16 @@ export async function getBusinessByDomain(domain: string) {
 export async function getActiveBusinessByDomain(domain: string) {
   const business = await getBusinessByDomain(domain);
 
-  if (!business || business.domainStatus !== "active" || !business.active) {
+  if (
+    !business ||
+    business.domainStatus !== "active" ||
+    !business.active ||
+    !isDomainPubliclyReachable({
+      domainStatus: business.domainStatus,
+      domainProviderStatus: business.domainProviderStatus,
+      sslStatus: business.sslStatus,
+    })
+  ) {
     return null;
   }
 
@@ -1290,7 +1300,6 @@ export async function updateBusinessDomainRecord(
   const nextActivatedAt = input.activatedAt ?? currentBusiness?.activatedAt ?? null;
   const nextLastCheckedAt = input.lastCheckedAt ?? currentBusiness?.lastCheckedAt ?? null;
   const nextSslStatus = (input.sslStatus ?? currentBusiness?.sslStatus ?? "pending") as DomainSslStatus;
-  const nextDomainStatus = (input.domainStatus ?? currentBusiness?.domainStatus ?? "pending") as DomainStatus;
   const nextDomainProvider = input.domainProvider ?? currentBusiness?.domainProvider ?? "manual";
   const nextDomainProviderStatus =
     input.domainProviderStatus ?? currentBusiness?.domainProviderStatus ?? "manual";
@@ -1298,19 +1307,38 @@ export async function updateBusinessDomainRecord(
     input.domainProviderMessage ?? currentBusiness?.domainProviderMessage ?? null;
   const nextDomainProviderSyncedAt =
     input.domainProviderSyncedAt ?? currentBusiness?.domainProviderSyncedAt ?? null;
+  const requestedDomainStatus =
+    (input.domainStatus ?? currentBusiness?.domainStatus ?? "pending") as DomainStatus;
+  const safeDomainStatus: DomainStatus = !normalizedDomain
+    ? "pending"
+    : isDomainPubliclyReachable({
+        domainStatus: requestedDomainStatus,
+        domainProviderStatus: nextDomainProviderStatus,
+        sslStatus: nextSslStatus,
+      })
+      ? "active"
+      : requestedDomainStatus === "active"
+        ? nextSslStatus === "ready" || nextSslStatus === "active"
+          ? "ssl_ready"
+          : nextVerifiedAt
+            ? "verified"
+            : nextDomainProviderStatus !== "manual"
+              ? "provider_added"
+              : "pending"
+        : requestedDomainStatus;
   const patchBody = {
     domain: normalizedDomain,
     hostname: nextHostname,
     verification_token: normalizedDomain ? nextVerificationToken ?? buildDomainVerificationToken() : null,
     verified_at: normalizedDomain ? nextVerifiedAt : null,
-    activated_at: normalizedDomain ? nextActivatedAt : null,
+    activated_at: normalizedDomain && safeDomainStatus === "active" ? nextActivatedAt : null,
     last_checked_at: normalizedDomain ? nextLastCheckedAt : null,
     domain_provider: normalizedDomain ? nextDomainProvider : "manual",
     provider_status: normalizedDomain ? nextDomainProviderStatus : "manual",
     provider_message: normalizedDomain ? nextDomainProviderMessage : null,
     provider_synced_at: normalizedDomain ? nextDomainProviderSyncedAt : null,
     ssl_status: normalizedDomain ? nextSslStatus : "pending",
-    domain_status: normalizedDomain ? nextDomainStatus : "pending",
+    domain_status: normalizedDomain ? safeDomainStatus : "pending",
     updated_at: new Date().toISOString(),
   };
 
@@ -1386,14 +1414,14 @@ export async function updateBusinessDomainRecord(
   existing.verificationToken =
     normalizedDomain ? nextVerificationToken ?? buildDomainVerificationToken() : null;
   existing.verifiedAt = normalizedDomain ? nextVerifiedAt : null;
-  existing.activatedAt = normalizedDomain ? nextActivatedAt : null;
+  existing.activatedAt = normalizedDomain && safeDomainStatus === "active" ? nextActivatedAt : null;
   existing.lastCheckedAt = normalizedDomain ? nextLastCheckedAt : null;
   existing.domainProvider = normalizedDomain ? nextDomainProvider : "manual";
   existing.domainProviderStatus = normalizedDomain ? nextDomainProviderStatus : "manual";
   existing.domainProviderMessage = normalizedDomain ? nextDomainProviderMessage : null;
   existing.domainProviderSyncedAt = normalizedDomain ? nextDomainProviderSyncedAt : null;
   existing.sslStatus = normalizedDomain ? nextSslStatus : "pending";
-  existing.domainStatus = normalizedDomain ? nextDomainStatus : "pending";
+  existing.domainStatus = normalizedDomain ? safeDomainStatus : "pending";
   existing.updatedAt = new Date().toISOString();
 
   return existing;

@@ -43,6 +43,16 @@ function getVercelConfig() {
   return { token, projectId, teamId };
 }
 
+function requireVercelConfig() {
+  const config = getVercelConfig();
+
+  if (!config) {
+    throw new Error("Vercel bağlantısı eksik. VERCEL_API_TOKEN ve VERCEL_PROJECT_ID gerekli.");
+  }
+
+  return config;
+}
+
 export function getDomainAutomationMode(): DomainAutomationMode {
   return getVercelConfig() ? "vercel" : "manual";
 }
@@ -85,11 +95,7 @@ async function readProviderResponse(response: Response): Promise<ProviderFetchRe
 }
 
 async function vercelFetch(path: string, init?: RequestInit) {
-  const config = getVercelConfig();
-
-  if (!config) {
-    return null;
-  }
+  const config = requireVercelConfig();
 
   const url = new URL(`https://api.vercel.com${path}`);
 
@@ -138,11 +144,7 @@ function isAlreadyExistsError(status: number, rawText: string) {
 }
 
 async function addVercelDomain(domain: string): Promise<ProviderFetchResult | null> {
-  const config = getVercelConfig();
-
-  if (!config) {
-    return null;
-  }
+  const config = requireVercelConfig();
 
   const response = await vercelFetch(`/v10/projects/${encodeURIComponent(config.projectId)}/domains`, {
     method: "POST",
@@ -157,11 +159,7 @@ async function addVercelDomain(domain: string): Promise<ProviderFetchResult | nu
 }
 
 async function removeVercelDomain(domain: string): Promise<ProviderFetchResult | null> {
-  const config = getVercelConfig();
-
-  if (!config) {
-    return null;
-  }
+  const config = requireVercelConfig();
 
   const response = await vercelFetch(
     `/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(domain)}`,
@@ -176,11 +174,7 @@ async function removeVercelDomain(domain: string): Promise<ProviderFetchResult |
 }
 
 async function inspectVercelDomain(domain: string): Promise<ProviderFetchResult | null> {
-  const config = getVercelConfig();
-
-  if (!config) {
-    return null;
-  }
+  const config = requireVercelConfig();
 
   const response = await vercelFetch(
     `/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(domain)}`,
@@ -205,18 +199,6 @@ export async function syncBusinessDomainWithProvider(
       status: "manual",
       message: "Hostname bulunamadı.",
       domains: [],
-    };
-  }
-
-  const config = getVercelConfig();
-
-  if (!config) {
-    return {
-      mode: "manual",
-      provider: "manual",
-      status: "manual",
-      message: "Super admin domaini hosting paneline eklemeli.",
-      domains,
     };
   }
 
@@ -273,18 +255,6 @@ export async function removeBusinessDomainFromProvider(
       status: "manual",
       message: "Hostname bulunamadı.",
       domains: [],
-    };
-  }
-
-  const config = getVercelConfig();
-
-  if (!config) {
-    return {
-      mode: "manual",
-      provider: "manual",
-      status: "manual",
-      message: "Manuel modda provider silme yapılamaz.",
-      domains,
     };
   }
 
