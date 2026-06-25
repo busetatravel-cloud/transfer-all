@@ -5,6 +5,9 @@ import {
   getSupabaseUrl,
 } from "@/lib/supabase-config";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type DebugFetchResult = {
   count: number | null;
   error: {
