@@ -3,7 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type { BusinessListRecord } from "@/lib/business";
-import { formatDomainStatusLabel, formatSslStatusLabel } from "@/lib/domain-utils";
+import {
+  formatAppStatusLabel,
+  formatDomainStatusLabel,
+  formatDnsStatusLabel,
+  formatSslStatusLabel,
+} from "@/lib/domain-utils";
 
 type Props = {
   businesses: BusinessListRecord[];
@@ -172,11 +177,19 @@ export function SuperAdminDomainsModule({ businesses }: Props) {
               <dl className="mt-5 grid gap-3 sm:grid-cols-2">
                 <MetaItem label="Hostname" value={hostname || "-"} />
                 <MetaItem label="Token" value={business.verificationToken ?? "-"} />
+                <MetaItem label="Verification gerekli" value={business.verificationRequired ? "Evet" : "Hayır"} />
+                <MetaItem label="Verification type" value={business.verificationType ?? "-"} />
+                <MetaItem label="Verification host" value={business.verificationName ?? "-"} />
+                <MetaItem label="Verification value" value={business.verificationValue ?? "-"} />
+                <MetaItem label="Vercel error" value={business.vercelDomainError ?? "-"} />
                 <MetaItem label="Provider" value={business.domainProvider === "vercel" ? "Vercel" : "Manual"} />
                 <MetaItem label="Provider status" value={business.domainProviderStatus ?? "-"} />
+                <MetaItem label="DNS status" value={formatDnsStatusLabel(business.dnsStatus)} />
                 <MetaItem label="Son kontrol" value={formatDateTime(business.lastCheckedAt)} />
                 <MetaItem label="Verified at" value={formatDateTime(business.verifiedAt)} />
                 <MetaItem label="Activated at" value={formatDateTime(business.activatedAt)} />
+                <MetaItem label="SSL status" value={formatSslStatusLabel(business.sslStatus)} />
+                <MetaItem label="App status" value={formatAppStatusLabel(business.appStatus)} />
                 <MetaItem label="Business ID" value={business.id} />
               </dl>
 

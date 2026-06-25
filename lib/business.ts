@@ -9,7 +9,9 @@ import {
 } from "@/lib/platform";
 import {
   buildDomainVerificationToken,
+  type DomainAppStatus,
   type DomainAutomationMode,
+  type DomainDnsStatus,
   type DomainSslStatus,
   type DomainProviderStatus,
   type DomainStatus,
@@ -40,6 +42,11 @@ export type BusinessRecord = {
   domain: string | null;
   hostname: string | null;
   verificationToken: string | null;
+  verificationRequired: boolean;
+  verificationType: string | null;
+  verificationName: string | null;
+  verificationValue: string | null;
+  vercelDomainError: string | null;
   verifiedAt: string | null;
   activatedAt: string | null;
   lastCheckedAt: string | null;
@@ -47,7 +54,9 @@ export type BusinessRecord = {
   domainProviderStatus: DomainProviderStatus;
   domainProviderMessage: string | null;
   domainProviderSyncedAt: string | null;
+  dnsStatus: DomainDnsStatus;
   sslStatus: DomainSslStatus;
+  appStatus: DomainAppStatus;
   domainStatus: DomainStatus;
   createdAt: string;
   updatedAt: string;
@@ -114,7 +123,14 @@ export type BusinessDomainUpdateInput = {
   verifiedAt?: string | null;
   activatedAt?: string | null;
   lastCheckedAt?: string | null;
+  verificationRequired?: boolean;
+  verificationType?: string | null;
+  verificationName?: string | null;
+  verificationValue?: string | null;
+  vercelDomainError?: string | null;
   sslStatus?: BusinessRecord["sslStatus"] | null;
+  dnsStatus?: BusinessRecord["dnsStatus"] | null;
+  appStatus?: BusinessRecord["appStatus"] | null;
 };
 
 export type BusinessCreateResult = {
@@ -197,6 +213,11 @@ const demoBusinesses: BusinessRecord[] = [
     domain: "demo-transfer.local",
     hostname: "demo-transfer.local",
     verificationToken: "demo-verification-token",
+    verificationRequired: false,
+    verificationType: null,
+    verificationName: null,
+    verificationValue: null,
+    vercelDomainError: null,
     verifiedAt: "2026-06-01T00:00:00.000Z",
     activatedAt: "2026-06-01T00:00:00.000Z",
     lastCheckedAt: "2026-06-01T00:00:00.000Z",
@@ -204,7 +225,9 @@ const demoBusinesses: BusinessRecord[] = [
     domainProviderStatus: "manual",
     domainProviderMessage: null,
     domainProviderSyncedAt: null,
+    dnsStatus: "verified",
     sslStatus: "active",
+    appStatus: "ready",
     domainStatus: "active",
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
@@ -280,6 +303,11 @@ function fromSupabaseBusiness(row: Record<string, unknown>): BusinessRecord {
     domain: (row.domain as string | null) ?? null,
     hostname: (row.hostname as string | null) ?? null,
     verificationToken: (row.verification_token as string | null) ?? null,
+    verificationRequired: Boolean(row.verification_required ?? false),
+    verificationType: (row.verification_type as string | null) ?? null,
+    verificationName: (row.verification_name as string | null) ?? null,
+    verificationValue: (row.verification_value as string | null) ?? null,
+    vercelDomainError: (row.vercel_domain_error as string | null) ?? null,
     verifiedAt: (row.verified_at as string | null) ?? null,
     activatedAt: (row.activated_at as string | null) ?? null,
     lastCheckedAt: (row.last_checked_at as string | null) ?? null,
@@ -287,7 +315,9 @@ function fromSupabaseBusiness(row: Record<string, unknown>): BusinessRecord {
     domainProviderStatus: ((row.provider_status as DomainProviderStatus) ?? "manual"),
     domainProviderMessage: (row.provider_message as string | null) ?? null,
     domainProviderSyncedAt: (row.provider_synced_at as string | null) ?? null,
+    dnsStatus: ((row.dns_status as DomainDnsStatus) ?? "pending"),
     sslStatus: (row.ssl_status as DomainSslStatus) ?? "pending",
+    appStatus: ((row.app_status as DomainAppStatus) ?? "pending"),
     domainStatus: (row.domain_status as DomainStatus) ?? "pending",
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
@@ -505,7 +535,7 @@ async function insertBusinessRow(input: {
   whatsapp: string | null;
   domain: string | null;
 }) {
-  const response = await supabaseFetch("/businesses", {
+    const response = await supabaseFetch("/businesses", {
       method: "POST",
       headers: {
         Prefer: "return=representation",
@@ -513,14 +543,21 @@ async function insertBusinessRow(input: {
       body: JSON.stringify({
         name: input.name,
         email: input.email,
-      phone: input.phone,
-      whatsapp: input.whatsapp,
-      domain: input.domain,
-      domain_status: "pending",
-      ssl_status: "pending",
-      domain_provider: "manual",
-      provider_status: "manual",
-    }),
+        phone: input.phone,
+        whatsapp: input.whatsapp,
+        domain: input.domain,
+        domain_status: "pending",
+        dns_status: "pending",
+        app_status: "pending",
+        ssl_status: "pending",
+        domain_provider: "manual",
+        provider_status: "manual",
+        verification_required: false,
+        verification_type: null,
+        verification_name: null,
+        verification_value: null,
+        vercel_domain_error: null,
+      }),
   });
 
   if (!response?.ok) {
@@ -868,7 +905,7 @@ export async function loadSuperAdminBusinesses(): Promise<SuperAdminBusinessesLo
   if (config) {
     const [businessResult, adminRows] = await Promise.all([
       readRowsDetailed(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&order=created_at.desc`,
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verification_required,verification_type,verification_name,verification_value,vercel_domain_error,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,dns_status,ssl_status,app_status,domain_status,created_at,updated_at&order=created_at.desc`,
       ),
       readRows(
         `/users?select=id,business_id,role,email,auth_user_id,password_hash,password_plaintext,password_changed_at,last_login_at,deleted_at,active,created_at,updated_at&role=eq.BUSINESS_ADMIN&deleted_at=is.null`,
@@ -1021,7 +1058,7 @@ export async function getBusinessById(id: string) {
 
   if (config) {
     const response = await supabaseFetch(
-      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
+      `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verification_required,verification_type,verification_name,verification_value,vercel_domain_error,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,dns_status,ssl_status,app_status,domain_status,created_at,updated_at&id=eq.${encodeURIComponent(
         id,
       )}&limit=1`,
     );
@@ -1049,7 +1086,7 @@ export async function getBusinessByDomain(domain: string) {
   if (config) {
     const fetchBusiness = async (field: "domain" | "hostname", value: string) => {
       const response = await supabaseFetch(
-        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,ssl_status,domain_status,created_at,updated_at&${field}=eq.${encodeURIComponent(
+        `/businesses?select=id,name,email,phone,whatsapp,logo_url,active,plan_id,package_name,package_start,package_end,domain,hostname,verification_token,verification_required,verification_type,verification_name,verification_value,vercel_domain_error,verified_at,activated_at,last_checked_at,domain_provider,provider_status,provider_message,provider_synced_at,dns_status,ssl_status,app_status,domain_status,created_at,updated_at&${field}=eq.${encodeURIComponent(
           value,
         )}&limit=1`,
       );
@@ -1096,6 +1133,8 @@ export async function getActiveBusinessByDomain(domain: string) {
       domainStatus: business.domainStatus,
       domainProviderStatus: business.domainProviderStatus,
       sslStatus: business.sslStatus,
+      dnsStatus: business.dnsStatus,
+      appStatus: business.appStatus,
     })
   ) {
     return null;
@@ -1235,6 +1274,11 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
     domain: normalizedDomain,
     hostname: normalizedDomain,
     verificationToken: normalizedDomain ? buildDomainVerificationToken() : null,
+    verificationRequired: false,
+    verificationType: null,
+    verificationName: null,
+    verificationValue: null,
+    vercelDomainError: null,
     verifiedAt: null,
     activatedAt: null,
     lastCheckedAt: normalizedDomain ? now : null,
@@ -1242,7 +1286,9 @@ export async function createBusinessWithAdmin(input: BusinessCreateInput) {
     domainProviderStatus: "manual",
     domainProviderMessage: null,
     domainProviderSyncedAt: null,
+    dnsStatus: "pending",
     sslStatus: "pending",
+    appStatus: "pending",
     domainStatus: normalizedDomain ? "pending" : "pending",
     createdAt: now,
     updatedAt: now,
@@ -1296,10 +1342,22 @@ export async function updateBusinessDomainRecord(
   const nextHostname = normalizedDomain;
   const nextVerificationToken =
     input.verificationToken ?? currentBusiness?.verificationToken ?? null;
+  const nextVerificationRequired =
+    input.verificationRequired ?? currentBusiness?.verificationRequired ?? false;
+  const nextVerificationType =
+    input.verificationType ?? currentBusiness?.verificationType ?? null;
+  const nextVerificationName =
+    input.verificationName ?? currentBusiness?.verificationName ?? null;
+  const nextVerificationValue =
+    input.verificationValue ?? currentBusiness?.verificationValue ?? null;
+  const nextVercelDomainError =
+    input.vercelDomainError ?? currentBusiness?.vercelDomainError ?? null;
   const nextVerifiedAt = input.verifiedAt ?? currentBusiness?.verifiedAt ?? null;
   const nextActivatedAt = input.activatedAt ?? currentBusiness?.activatedAt ?? null;
   const nextLastCheckedAt = input.lastCheckedAt ?? currentBusiness?.lastCheckedAt ?? null;
+  const nextDnsStatus = (input.dnsStatus ?? currentBusiness?.dnsStatus ?? "pending") as DomainDnsStatus;
   const nextSslStatus = (input.sslStatus ?? currentBusiness?.sslStatus ?? "pending") as DomainSslStatus;
+  const nextAppStatus = (input.appStatus ?? currentBusiness?.appStatus ?? "pending") as DomainAppStatus;
   const nextDomainProvider = input.domainProvider ?? currentBusiness?.domainProvider ?? "manual";
   const nextDomainProviderStatus =
     input.domainProviderStatus ?? currentBusiness?.domainProviderStatus ?? "manual";
@@ -1315,21 +1373,32 @@ export async function updateBusinessDomainRecord(
         domainStatus: requestedDomainStatus,
         domainProviderStatus: nextDomainProviderStatus,
         sslStatus: nextSslStatus,
+        dnsStatus: nextDnsStatus,
+        appStatus: nextAppStatus,
       })
       ? "active"
       : requestedDomainStatus === "active"
-        ? nextSslStatus === "ready" || nextSslStatus === "active"
-          ? "ssl_ready"
-          : nextVerifiedAt
-            ? "verified"
-            : nextDomainProviderStatus !== "manual"
-              ? "provider_added"
-              : "pending"
+        ? nextDomainProviderStatus === "manual"
+          ? "pending"
+          : nextDnsStatus === "verified"
+            ? nextSslStatus === "ready" || nextSslStatus === "active"
+              ? nextAppStatus === "ready"
+                ? "active"
+                : "ssl_ready"
+              : "verified"
+            : nextDnsStatus === "detected"
+              ? "dns_detected"
+              : "provider_added"
         : requestedDomainStatus;
   const patchBody = {
     domain: normalizedDomain,
     hostname: nextHostname,
     verification_token: normalizedDomain ? nextVerificationToken ?? buildDomainVerificationToken() : null,
+    verification_required: normalizedDomain ? nextVerificationRequired : false,
+    verification_type: normalizedDomain ? nextVerificationType : null,
+    verification_name: normalizedDomain ? nextVerificationName : null,
+    verification_value: normalizedDomain ? nextVerificationValue : null,
+    vercel_domain_error: normalizedDomain ? nextVercelDomainError : null,
     verified_at: normalizedDomain ? nextVerifiedAt : null,
     activated_at: normalizedDomain && safeDomainStatus === "active" ? nextActivatedAt : null,
     last_checked_at: normalizedDomain ? nextLastCheckedAt : null,
@@ -1337,7 +1406,9 @@ export async function updateBusinessDomainRecord(
     provider_status: normalizedDomain ? nextDomainProviderStatus : "manual",
     provider_message: normalizedDomain ? nextDomainProviderMessage : null,
     provider_synced_at: normalizedDomain ? nextDomainProviderSyncedAt : null,
+    dns_status: normalizedDomain ? nextDnsStatus : "pending",
     ssl_status: normalizedDomain ? nextSslStatus : "pending",
+    app_status: normalizedDomain ? nextAppStatus : "pending",
     domain_status: normalizedDomain ? safeDomainStatus : "pending",
     updated_at: new Date().toISOString(),
   };
@@ -1413,6 +1484,11 @@ export async function updateBusinessDomainRecord(
   existing.hostname = nextHostname;
   existing.verificationToken =
     normalizedDomain ? nextVerificationToken ?? buildDomainVerificationToken() : null;
+  existing.verificationRequired = normalizedDomain ? nextVerificationRequired : false;
+  existing.verificationType = normalizedDomain ? nextVerificationType : null;
+  existing.verificationName = normalizedDomain ? nextVerificationName : null;
+  existing.verificationValue = normalizedDomain ? nextVerificationValue : null;
+  existing.vercelDomainError = normalizedDomain ? nextVercelDomainError : null;
   existing.verifiedAt = normalizedDomain ? nextVerifiedAt : null;
   existing.activatedAt = normalizedDomain && safeDomainStatus === "active" ? nextActivatedAt : null;
   existing.lastCheckedAt = normalizedDomain ? nextLastCheckedAt : null;
@@ -1420,7 +1496,9 @@ export async function updateBusinessDomainRecord(
   existing.domainProviderStatus = normalizedDomain ? nextDomainProviderStatus : "manual";
   existing.domainProviderMessage = normalizedDomain ? nextDomainProviderMessage : null;
   existing.domainProviderSyncedAt = normalizedDomain ? nextDomainProviderSyncedAt : null;
+  existing.dnsStatus = normalizedDomain ? nextDnsStatus : "pending";
   existing.sslStatus = normalizedDomain ? nextSslStatus : "pending";
+  existing.appStatus = normalizedDomain ? nextAppStatus : "pending";
   existing.domainStatus = normalizedDomain ? safeDomainStatus : "pending";
   existing.updatedAt = new Date().toISOString();
 
@@ -1474,6 +1552,11 @@ export async function updateBusinessOwnDomainRecord(
           verification_token: normalizedDomain
             ? currentBusiness?.verificationToken ?? buildDomainVerificationToken()
             : null,
+          verification_required: false,
+          verification_type: null,
+          verification_name: null,
+          verification_value: null,
+          vercel_domain_error: null,
           verified_at: null,
           activated_at: null,
           last_checked_at: normalizedDomain ? new Date().toISOString() : null,
@@ -1481,7 +1564,9 @@ export async function updateBusinessOwnDomainRecord(
           provider_status: normalizedDomain ? currentBusiness?.domainProviderStatus ?? "manual" : "manual",
           provider_message: normalizedDomain ? currentBusiness?.domainProviderMessage ?? null : null,
           provider_synced_at: normalizedDomain ? currentBusiness?.domainProviderSyncedAt ?? null : null,
+          dns_status: "pending",
           ssl_status: normalizedDomain ? "pending" : "pending",
+          app_status: "pending",
           domain_status: "pending" as BusinessRecord["domainStatus"],
           updated_at: new Date().toISOString(),
         }),
@@ -1523,6 +1608,11 @@ export async function updateBusinessOwnDomainRecord(
   existing.verificationToken = normalizedDomain
     ? currentBusiness?.verificationToken ?? buildDomainVerificationToken()
     : null;
+  existing.verificationRequired = false;
+  existing.verificationType = null;
+  existing.verificationName = null;
+  existing.verificationValue = null;
+  existing.vercelDomainError = null;
   existing.verifiedAt = null;
   existing.activatedAt = null;
   existing.lastCheckedAt = normalizedDomain ? new Date().toISOString() : null;
@@ -1530,7 +1620,9 @@ export async function updateBusinessOwnDomainRecord(
   existing.domainProviderStatus = normalizedDomain ? currentBusiness?.domainProviderStatus ?? "manual" : "manual";
   existing.domainProviderMessage = normalizedDomain ? currentBusiness?.domainProviderMessage ?? null : null;
   existing.domainProviderSyncedAt = normalizedDomain ? currentBusiness?.domainProviderSyncedAt ?? null : null;
+  existing.dnsStatus = "pending";
   existing.sslStatus = "pending";
+  existing.appStatus = "pending";
   existing.domainStatus = "pending";
   existing.updatedAt = new Date().toISOString();
 

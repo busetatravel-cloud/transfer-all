@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { updateBusinessDomainRecord } from "@/lib/business";
-import { DOMAIN_STATUS_OPTIONS } from "@/lib/domain-utils";
+import {
+  DOMAIN_STATUS_OPTIONS,
+  type DomainAppStatus,
+  type DomainDnsStatus,
+  type DomainSslStatus,
+} from "@/lib/domain-utils";
 
 function normalizeStatus(value: unknown) {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -26,6 +31,14 @@ export async function PATCH(
         domain?: string;
         hostname?: string;
         domainStatus?: string;
+        verificationRequired?: boolean;
+        verificationType?: string | null;
+        verificationName?: string | null;
+        verificationValue?: string | null;
+        vercelDomainError?: string | null;
+        dnsStatus?: DomainDnsStatus | null;
+        sslStatus?: DomainSslStatus | null;
+        appStatus?: DomainAppStatus | null;
       }
     | null;
 
@@ -63,6 +76,14 @@ export async function PATCH(
         | "active"
         | "failed"
         | undefined) ?? "pending",
+      verificationRequired: Boolean(body?.verificationRequired ?? false),
+      verificationType: body?.verificationType ?? null,
+      verificationName: body?.verificationName ?? null,
+      verificationValue: body?.verificationValue ?? null,
+      vercelDomainError: body?.vercelDomainError ?? null,
+      dnsStatus: body?.dnsStatus ?? null,
+      sslStatus: body?.sslStatus ?? null,
+      appStatus: body?.appStatus ?? null,
     });
 
     return NextResponse.json({ ok: true, business });

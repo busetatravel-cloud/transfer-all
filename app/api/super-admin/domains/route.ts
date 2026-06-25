@@ -91,10 +91,22 @@ export async function PATCH(request: Request) {
     const business = await updateBusinessDomainRecord(businessId, {
       domain: current.hostname ?? current.domain ?? "",
       hostname: current.hostname ?? current.domain ?? "",
-      domainStatus: current.hostname || current.domain ? "verified" : "pending",
+      domainStatus: "pending",
       activatedAt: null,
       lastCheckedAt: new Date().toISOString(),
+      verifiedAt: null,
       sslStatus: "pending",
+      appStatus: "pending",
+      dnsStatus: "pending",
+      verificationRequired: false,
+      verificationType: null,
+      verificationName: null,
+      verificationValue: null,
+      vercelDomainError: null,
+      domainProvider: "manual",
+      domainProviderStatus: "manual",
+      domainProviderMessage: null,
+      domainProviderSyncedAt: null,
     });
 
     return NextResponse.json({
@@ -124,6 +136,14 @@ export async function PATCH(request: Request) {
         providerResult.status === "provider_added"
           ? new Date().toISOString()
           : current.domainProviderSyncedAt,
+      verificationRequired: providerResult.verification?.required ?? current.verificationRequired,
+      verificationType: providerResult.verification?.type ?? current.verificationType,
+      verificationName: providerResult.verification?.name ?? current.verificationName,
+      verificationValue: providerResult.verification?.value ?? current.verificationValue,
+      vercelDomainError:
+        providerResult.error ||
+        (providerResult.conflicts.length ? providerResult.conflicts.join(" | ") : null) ||
+        (providerResult.misconfigured ? "Vercel domain misconfigured." : null),
     });
 
     return NextResponse.json({
@@ -144,10 +164,11 @@ export async function PATCH(request: Request) {
       domain: current.hostname ?? current.domain ?? "",
       hostname: current.hostname ?? current.domain ?? "",
       domainStatus: current.domainStatus,
-      domainProvider: "manual",
-      domainProviderStatus: "manual",
+      domainProvider: providerResult.status === "failed" ? current.domainProvider : "manual",
+      domainProviderStatus: providerResult.status === "failed" ? current.domainProviderStatus : "manual",
       domainProviderMessage: providerResult.message,
-      domainProviderSyncedAt: null,
+      domainProviderSyncedAt: providerResult.status === "failed" ? current.domainProviderSyncedAt : null,
+      vercelDomainError: providerResult.error || null,
     });
 
     return NextResponse.json({

@@ -8,10 +8,11 @@ import {
   buildDomainAdapters,
   getBusinessPublicTarget,
   formatDomainStatusLabel,
+  formatDnsStatusLabel,
+  formatAppStatusLabel,
   formatSslStatusLabel,
   getDomainStepIndex,
   getDnsCnameTarget,
-  isDomainDnsHealthy,
   isDomainProviderConnected,
   isDomainPubliclyReachable,
   isDomainSslReady,
@@ -93,6 +94,8 @@ export function DomainCenter({ business, vercelConnectionReady = true }: Props) 
     domainStatus: business.domainStatus,
     domainProviderStatus: business.domainProviderStatus,
     sslStatus: business.sslStatus,
+    dnsStatus: business.dnsStatus,
+    appStatus: business.appStatus,
   });
   const renderDomainStatus =
     publicReady || business.domainStatus !== "active"
@@ -103,27 +106,44 @@ export function DomainCenter({ business, vercelConnectionReady = true }: Props) 
       buildDomainAdapters(
         currentHostname || "firma.com",
         business.verificationToken || "verification-token",
-        { cnameTarget: getDnsCnameTarget() },
+        {
+          cnameTarget: getDnsCnameTarget(),
+          verification:
+            business.verificationRequired || business.verificationValue || business.verificationName
+              ? {
+                  required: business.verificationRequired,
+                  type: business.verificationType,
+                  name: business.verificationName,
+                  value: business.verificationValue,
+                }
+              : null,
+        },
       ),
-    [business.verificationToken, currentHostname],
+    [
+      business.verificationName,
+      business.verificationRequired,
+      business.verificationToken,
+      business.verificationType,
+      business.verificationValue,
+      currentHostname,
+    ],
   );
   const adapter = adapters.find((item) => item.provider === provider) ?? adapters[0];
   const stepIndex = getDomainStepIndex(renderDomainStatus);
   const isOpenable = Boolean(currentHostname.trim()) && publicReady;
   const activeLink = publicReady ? getBusinessPublicTarget(currentHostname) ?? null : null;
   const providerConnected = isDomainProviderConnected(business.domainProviderStatus);
-  const dnsReady = isDomainDnsHealthy(business.domainStatus);
   const sslReady = isDomainSslReady(business.sslStatus);
   const statusLabel = formatDomainStatusLabel(renderDomainStatus);
   const sslLabel = formatSslStatusLabel(business.sslStatus);
   const providerLabel = providerConnected ? "Vercel project bağlantısı var" : "Vercel project bağlantısı yok";
-  const dnsLabel = dnsReady ? "DNS doğru" : "DNS doğru değil";
+  const dnsLabel = formatDnsStatusLabel(business.dnsStatus);
   const sslStateLabel = sslReady ? "SSL hazır" : "SSL hazır değil";
-  const appLabel = publicReady ? "App’e ulaşıyor" : "App’e ulaşmıyor";
+  const appLabel = formatAppStatusLabel(business.appStatus);
   const vercelConnectionMissing = !vercelConnectionReady;
 
   async function submit(
-    action: "save" | "check_dns" | "check_ssl" | "remove",
+    action: "save" | "check_dns" | "check_ssl" | "check_app" | "remove",
     event?: FormEvent<HTMLFormElement>,
   ) {
     event?.preventDefault();
@@ -181,6 +201,8 @@ export function DomainCenter({ business, vercelConnectionReady = true }: Props) 
           body?.message ??
           (action === "remove"
             ? "Domain kaldırıldı."
+            : action === "check_app"
+              ? "App kontrolü tamamlandı."
             : action === "check_ssl"
               ? "SSL kontrolü tamamlandı."
               : "Domain güncellendi."),
@@ -304,7 +326,7 @@ export function DomainCenter({ business, vercelConnectionReady = true }: Props) 
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <ActionButton disabled={isPending || !hostname.trim()} type="submit">
+              <ActionButton disabled={isPending || !hostname.trim() || vercelConnectionMissing} type="submit">
                 Kaydet
               </ActionButton>
               <ActionButton
@@ -322,6 +344,14 @@ export function DomainCenter({ business, vercelConnectionReady = true }: Props) 
                 onClick={() => void submit("check_ssl")}
               >
                 SSL Kontrol Et
+              </ActionButton>
+              <ActionButton
+                disabled={isPending || !currentHostname}
+                tone="secondary"
+                type="button"
+                onClick={() => void submit("check_app")}
+              >
+                App Kontrol Et
               </ActionButton>
               <ActionButton
                 disabled={isPending || currentDisplay === "Henüz bağlı değil"}
@@ -359,8 +389,14 @@ export function DomainCenter({ business, vercelConnectionReady = true }: Props) 
             <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
               <MetaItem label="Hostname" value={business.hostname ?? business.domain ?? "-"} />
               <MetaItem label="Verification token" value={business.verificationToken ?? "-"} />
+              <MetaItem label="Verification gerekli" value={business.verificationRequired ? "Evet" : "Hayır"} />
+              <MetaItem label="Verification type" value={business.verificationType ?? "-"} />
+              <MetaItem label="Verification host" value={business.verificationName ?? "-"} />
+              <MetaItem label="Verification value" value={business.verificationValue ?? "-"} />
+              <MetaItem label="Vercel error" value={business.vercelDomainError ?? "-"} />
               <MetaItem label="Provider" value={business.domainProvider === "vercel" ? "Vercel" : "Manual"} />
               <MetaItem label="Provider status" value={business.domainProviderStatus ?? "-"} />
+              <MetaItem label="DNS status" value={dnsLabel} />
               <MetaItem label="Verified at" value={formatDateTime(business.verifiedAt)} />
               <MetaItem label="Activated at" value={formatDateTime(business.activatedAt)} />
               <MetaItem label="Last check" value={formatDateTime(business.lastCheckedAt)} />

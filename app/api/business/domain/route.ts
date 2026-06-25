@@ -12,6 +12,9 @@ import {
 import {
   buildDomainVerificationToken,
   formatDomainStatusLabel,
+  formatAppStatusLabel,
+  formatDnsStatusLabel,
+  type DomainVerificationRecord,
   type DomainStatus,
 } from "@/lib/domain-utils";
 import {
@@ -72,7 +75,11 @@ function getCurrentHostname(current: { hostname?: string | null; domain?: string
   return (current.hostname ?? current.domain ?? "").trim();
 }
 
-async function checkDnsForHostname(hostname: string, verificationToken: string) {
+async function checkDnsForHostname(
+  hostname: string,
+  verificationToken: string,
+  verificationRecord?: DomainVerificationRecord | null,
+) {
   const safeHostname = hostname.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
   const apexHost = safeHostname.startsWith("www.")
     ? safeHostname.replace(/^www\./i, "")
@@ -80,25 +87,37 @@ async function checkDnsForHostname(hostname: string, verificationToken: string) 
   const subHost = apexHost.startsWith("www.") ? apexHost : `www.${apexHost}`;
   const expectedARecord = "76.76.21.21";
   const expectedCname = "cname.vercel-dns.com";
+  const verificationHost = verificationRecord?.name?.trim() || "_vercel";
+  const expectedVerificationValue = verificationRecord?.value?.trim() || verificationToken;
 
-  const [aRecords, cnameRecords, txtRecords, apexTxtRecords] = await Promise.all([
+  const [aRecords, cnameRecords, txtRecords, apexTxtRecords, verificationTxtRecords] = await Promise.all([
     resolve4(apexHost).catch(() => [] as string[]),
     resolveCname(subHost).catch(() => [] as string[]),
     resolveTxt(`_verify.${apexHost}`).catch(() => [] as string[][]),
     resolveTxt(apexHost).catch(() => [] as string[][]),
+    resolveTxt(verificationHost).catch(() => [] as string[][]),
   ]);
 
-  const txtValues = [...flattenTxtRecords(txtRecords), ...flattenTxtRecords(apexTxtRecords)];
+  const txtValues = [
+    ...flattenTxtRecords(txtRecords),
+    ...flattenTxtRecords(apexTxtRecords),
+    ...flattenTxtRecords(verificationTxtRecords),
+  ];
   const normalizedCnames = cnameRecords.map(normalizeDnsTarget);
+  const verificationSatisfied = txtValues.some((item) => item === expectedVerificationValue);
   const detected =
     aRecords.some((item) => item === expectedARecord) ||
     normalizedCnames.some((item) => item === expectedCname) ||
-    txtValues.some((item) => item === verificationToken);
-  const verified = txtValues.some((item) => item === verificationToken);
+    verificationSatisfied;
+  const verified = verificationSatisfied;
 
   return {
     detected,
     verified,
+    verificationRequired: Boolean(verificationRecord?.required),
+    verificationType: verificationRecord?.type ?? null,
+    verificationName: verificationHost,
+    verificationValue: verificationRecord?.value ?? null,
     aRecords,
     cnameRecords: normalizedCnames,
     txtValues,
@@ -107,6 +126,39 @@ async function checkDnsForHostname(hostname: string, verificationToken: string) 
     expectedARecord,
     expectedCname,
   };
+}
+
+async function checkAppReachableForHostname(hostname: string) {
+  const url = `https://${hostname.replace(/^https?:\/\//i, "").replace(/\/+$/, "")}/`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "manual",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    return {
+      ok: response.status < 500,
+      status: response.status,
+      url,
+      finalUrl: response.url,
+      error: null as string | null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      url,
+      finalUrl: url,
+      error: error instanceof Error ? error.message : "App erisimi kontrol edilemedi.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function checkSslForHostname(hostname: string) {
@@ -251,16 +303,39 @@ export async function PATCH(request: Request) {
         );
       }
 
-      const dnsCheck = await checkDnsForHostname(hostname, verificationToken);
+      const verificationRecord = providerSync.verification ?? null;
+      const dnsCheck = await checkDnsForHostname(
+        hostname,
+        verificationRecord?.value ?? verificationToken,
+        verificationRecord,
+      );
       const sslCheck = await checkSslForHostname(hostname);
+      const appCheck = await checkAppReachableForHostname(hostname);
+      const verificationRequired = Boolean(
+        verificationRecord?.required || providerSync.misconfigured || providerSync.conflicts.length,
+      );
+      const nextDnsStatus =
+        dnsCheck.verified
+          ? "verified"
+          : dnsCheck.detected
+            ? "detected"
+            : "pending";
+      const nextSslStatus = sslCheck.ok ? "ready" : "checking";
+      const nextAppStatus = appCheck.ok ? "ready" : "checking";
       const now = new Date().toISOString();
-      const nextDomainStatus: DomainStatus = sslCheck.ok && dnsCheck.verified
+      const nextDomainStatus: DomainStatus =
+        providerSync.status === "provider_added" &&
+        dnsCheck.verified &&
+        sslCheck.ok &&
+        appCheck.ok
         ? "active"
-        : sslCheck.ok
+        : providerSync.status === "provider_added" &&
+            dnsCheck.verified &&
+            sslCheck.ok
           ? "ssl_ready"
-          : dnsCheck.verified
+          : providerSync.status === "provider_added" && dnsCheck.verified
             ? "verified"
-            : dnsCheck.detected
+            : providerSync.status === "provider_added" && dnsCheck.detected
               ? "dns_detected"
               : "provider_added";
 
@@ -268,6 +343,14 @@ export async function PATCH(request: Request) {
         domain: hostname,
         hostname,
         verificationToken,
+        verificationRequired,
+        verificationType: verificationRecord?.type ?? (verificationRequired ? "TXT" : null),
+        verificationName: verificationRecord?.name ?? (verificationRequired ? "_vercel" : null),
+        verificationValue: verificationRecord?.value ?? (verificationRequired ? verificationToken : null),
+        vercelDomainError:
+          providerSync.error ||
+          (providerSync.conflicts.length ? providerSync.conflicts.join(" | ") : null) ||
+          (providerSync.misconfigured ? "Vercel domain misconfigured." : null),
         domainStatus: nextDomainStatus,
         domainProvider: providerSync.mode,
         domainProviderStatus: providerSync.status,
@@ -276,7 +359,9 @@ export async function PATCH(request: Request) {
         verifiedAt: dnsCheck.verified ? now : null,
         activatedAt: nextDomainStatus === "active" ? now : null,
         lastCheckedAt: now,
-        sslStatus: sslCheck.ok ? "ready" : "checking",
+        dnsStatus: nextDnsStatus,
+        sslStatus: nextSslStatus,
+        appStatus: nextAppStatus,
       });
 
       await recordAuditLog({
@@ -299,6 +384,10 @@ export async function PATCH(request: Request) {
         providerMode: providerSync.mode,
         dnsCheck,
         sslCheck,
+        appCheck,
+        verification: verificationRecord,
+        dnsStatus: formatDnsStatusLabel(business.dnsStatus),
+        appStatus: formatAppStatusLabel(business.appStatus),
         warning: nextDomainStatus !== "active",
       });
     }
@@ -314,11 +403,27 @@ export async function PATCH(request: Request) {
 
       const hostname = getCurrentHostname(current);
       const verificationToken = current.verificationToken ?? buildDomainVerificationToken();
-      const dnsCheck = await checkDnsForHostname(hostname, verificationToken);
       const providerInspection = hasVercelDomainAutomation()
         ? await inspectBusinessDomainProvider(hostname)
         : { domains: [] };
       const providerResolved = providerInspection.domains.some((item) => item.ok);
+      const providerDomain = providerInspection.domains.find((item) => item.ok);
+      const verificationRecord =
+        providerDomain?.verification ??
+        (current.verificationRequired
+          ? {
+              required: current.verificationRequired,
+              type: current.verificationType,
+              name: current.verificationName,
+              value: current.verificationValue,
+            }
+          : null);
+      const dnsCheck = await checkDnsForHostname(
+        hostname,
+        verificationRecord?.value ?? verificationToken,
+        verificationRecord,
+      );
+      const appCheck = await checkAppReachableForHostname(hostname);
       const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
       const nextStatus: DomainStatus =
         isProtectedDomainStatus(currentStatus)
@@ -337,6 +442,16 @@ export async function PATCH(request: Request) {
         domain: hostname,
         hostname,
         verificationToken,
+        verificationRequired: Boolean(
+          verificationRecord?.required || providerDomain?.misconfigured || providerDomain?.conflicts.length,
+        ),
+        verificationType: verificationRecord?.type ?? (dnsCheck.verified ? "TXT" : current.verificationType),
+        verificationName: verificationRecord?.name ?? (dnsCheck.verified ? "_vercel" : current.verificationName),
+        verificationValue: verificationRecord?.value ?? (dnsCheck.verified ? verificationToken : current.verificationValue),
+        vercelDomainError:
+          providerDomain?.error ||
+          (providerDomain?.conflicts.length ? providerDomain.conflicts.join(" | ") : null) ||
+          (providerDomain?.misconfigured ? "Vercel domain misconfigured." : current.vercelDomainError),
         domainStatus: nextStatus,
         domainProvider: providerResolved ? "vercel" : current.domainProvider,
         domainProviderStatus: providerResolved ? "provider_added" : current.domainProviderStatus,
@@ -347,10 +462,12 @@ export async function PATCH(request: Request) {
         verifiedAt: dnsCheck.verified ? current.verifiedAt ?? new Date().toISOString() : current.verifiedAt,
         activatedAt: current.activatedAt ?? null,
         lastCheckedAt: new Date().toISOString(),
+        dnsStatus: dnsCheck.verified ? "verified" : dnsCheck.detected ? "detected" : current.dnsStatus,
         sslStatus:
           current.sslStatus === "ready" || current.sslStatus === "active"
             ? current.sslStatus
             : "checking",
+        appStatus: appCheck.ok ? "ready" : "checking",
       });
 
       await recordAuditLog({
@@ -375,6 +492,9 @@ export async function PATCH(request: Request) {
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         dnsCheck,
         providerCheck: providerInspection,
+        appCheck,
+        dnsStatus: formatDnsStatusLabel(business.dnsStatus),
+        appStatus: formatAppStatusLabel(business.appStatus),
         warning: !hasVercelDomainAutomation(),
         guideMode: !hasVercelDomainAutomation(),
       });
@@ -391,10 +511,11 @@ export async function PATCH(request: Request) {
 
       const hostname = getCurrentHostname(current);
       const sslCheck = await checkSslForHostname(hostname);
+      const appCheck = await checkAppReachableForHostname(hostname);
       const now = new Date().toISOString();
       const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
       const nextDomainStatus: DomainStatus = sslCheck.ok
-        ? currentStatus === "active"
+        ? currentStatus === "active" && appCheck.ok
           ? "active"
           : "ssl_ready"
         : isProtectedDomainStatus(currentStatus)
@@ -416,6 +537,7 @@ export async function PATCH(request: Request) {
         activatedAt: nextDomainStatus === "active" ? current.activatedAt ?? now : null,
         lastCheckedAt: now,
         sslStatus: sslCheck.ok ? "ready" : current.sslStatus === "ready" || current.sslStatus === "active" ? current.sslStatus : "checking",
+        appStatus: appCheck.ok ? "ready" : "checking",
       });
 
       await recordAuditLog({
@@ -435,7 +557,70 @@ export async function PATCH(request: Request) {
         message: sslCheck.ok ? "SSL sertifikası hazır." : "SSL sertifikası henüz hazır değil.",
         statusLabel: formatDomainStatusLabel(business.domainStatus),
         sslCheck,
+        appCheck,
+        appStatus: formatAppStatusLabel(business.appStatus),
         warning: !sslCheck.ok,
+        guideMode: !hasVercelDomainAutomation(),
+      });
+    }
+
+    if (action === "check_app") {
+      const current = await getBusinessById(businessId);
+
+      if (!current || !getCurrentHostname(current)) {
+        return jsonError("domain_missing", "Önce hostname kaydedin.", 400, {
+          fieldErrors: { hostname: "Önce hostname kaydedin." },
+        });
+      }
+
+      const hostname = getCurrentHostname(current);
+      const appCheck = await checkAppReachableForHostname(hostname);
+      const now = new Date().toISOString();
+      const currentStatus = String(current.domainStatus ?? "").trim().toLowerCase() as DomainStatus;
+      const nextDomainStatus: DomainStatus = appCheck.ok
+        ? currentStatus === "active" || current.sslStatus === "ready"
+          ? "active"
+          : currentStatus === "ssl_ready"
+            ? "ssl_ready"
+            : currentStatus === "verified"
+              ? "verified"
+              : currentStatus === "dns_detected"
+                ? "dns_detected"
+                : "provider_added"
+        : currentStatus === "active"
+          ? "ssl_ready"
+          : currentStatus;
+
+      const business = await updateBusinessDomainRecord(businessId, {
+        domain: hostname,
+        hostname,
+        verificationToken: current.verificationToken ?? buildDomainVerificationToken(),
+        domainStatus: nextDomainStatus,
+        verifiedAt: current.verifiedAt,
+        activatedAt: nextDomainStatus === "active" ? current.activatedAt ?? now : current.activatedAt,
+        lastCheckedAt: now,
+        appStatus: appCheck.ok ? "ready" : "checking",
+      });
+
+      await recordAuditLog({
+        businessId,
+        actorUserId: auth.session.userId,
+        actorRole: auth.session.role,
+        entityType: "domain",
+        entityId: businessId,
+        action: "update",
+        before: current,
+        after: business,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        business,
+        message: appCheck.ok ? "App erişimi doğrulandı." : "App henüz erişilebilir değil.",
+        statusLabel: formatDomainStatusLabel(business.domainStatus),
+        appCheck,
+        appStatus: formatAppStatusLabel(business.appStatus),
+        warning: !appCheck.ok,
         guideMode: !hasVercelDomainAutomation(),
       });
     }

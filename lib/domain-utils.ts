@@ -9,11 +9,22 @@ export type DomainStatus =
   | "active"
   | "failed";
 
+export type DomainDnsStatus = "pending" | "detected" | "verified" | "misconfigured" | "failed";
+
 export type DomainSslStatus = "pending" | "checking" | "ready" | "failed" | "active";
+
+export type DomainAppStatus = "pending" | "checking" | "ready" | "failed";
 
 export type DomainAutomationMode = "vercel" | "manual";
 
 export type DomainProviderStatus = "pending" | "provider_added" | "manual" | "failed";
+
+export type DomainVerificationRecord = {
+  required: boolean;
+  type: string | null;
+  name: string | null;
+  value: string | null;
+};
 
 export type DomainProvider =
   | "vercel"
@@ -44,47 +55,47 @@ export const DOMAIN_PROVIDER_OPTIONS: Array<{
   {
     value: "vercel",
     label: "Vercel",
-    description: "Vercel custom domain akışı için önerilen kayıtlar.",
+    description: "Vercel custom domain akisi icin onerilen kayitlar.",
   },
   {
     value: "cloudflare",
     label: "Cloudflare",
-    description: "Cloudflare DNS üzerinden yöneten ekipler için.",
+    description: "Cloudflare DNS uzerinden yoneten ekipler icin.",
   },
   {
     value: "godaddy",
     label: "GoDaddy",
-    description: "GoDaddy DNS paneli için hızlı kurulum rehberi.",
+    description: "GoDaddy DNS paneli icin hizli kurulum rehberi.",
   },
   {
     value: "namecheap",
     label: "Namecheap",
-    description: "Namecheap alan adı yönetimi için yönlendirme akışı.",
+    description: "Namecheap alan adi yonetimi icin yonlendirme akisi.",
   },
   {
     value: "turhost",
     label: "Turhost",
-    description: "Turhost DNS paneli için adım adım rehber.",
+    description: "Turhost DNS paneli icin adim adim rehber.",
   },
   {
     value: "natro",
     label: "Natro",
-    description: "Natro kullanıcıları için profesyonel yönlendirme.",
+    description: "Natro kullanicilari icin profesyonel yonlendirme.",
   },
   {
     value: "isimtescil",
-    label: "İsimtescil",
-    description: "İsimtescil DNS ekranı için hızlı kurulum.",
+    label: "Isimtescil",
+    description: "Isimtescil DNS ekrani icin hizli kurulum.",
   },
   {
     value: "hostinger",
     label: "Hostinger",
-    description: "Hostinger DNS yönlendirme akışı.",
+    description: "Hostinger DNS yonlendirme akisi.",
   },
   {
     value: "custom",
     label: "Custom",
-    description: "Özel DNS sağlayıcısı için genel onboarding.",
+    description: "Ozel DNS saglayicisi icin genel onboarding.",
   },
 ];
 
@@ -154,17 +165,34 @@ export function getDomainStepIndex(status: string | null | undefined) {
 export function formatDomainStatusLabel(status: string | null | undefined) {
   switch (String(status ?? "").trim().toLowerCase()) {
     case "provider_added":
-      return "Sağlayıcıya eklendi";
+      return "Saglayiciya eklendi";
     case "dns_detected":
-      return "DNS algılandı";
+      return "DNS algilandi";
     case "verified":
-      return "Doğrulandı";
+      return "Dogrulandi";
     case "ssl_ready":
-      return "SSL hazır";
+      return "SSL hazir";
     case "active":
       return "Aktif";
     case "failed":
-      return "Başarısız";
+      return "Basarisiz";
+    case "pending":
+    default:
+      return "Bekliyor";
+  }
+}
+
+export function formatDnsStatusLabel(status: string | null | undefined) {
+  switch (String(status ?? "").trim().toLowerCase()) {
+    case "detected":
+    case "dns_detected":
+      return "DNS algilandi";
+    case "verified":
+      return "DNS dogrulandi";
+    case "misconfigured":
+      return "DNS hatali";
+    case "failed":
+      return "DNS basarisiz";
     case "pending":
     default:
       return "Bekliyor";
@@ -178,9 +206,23 @@ export function formatSslStatusLabel(status: string | null | undefined) {
     case "issued":
     case "ready":
     case "active":
-      return "SSL hazır";
+      return "SSL hazir";
     case "failed":
-      return "SSL başarısız";
+      return "SSL basarisiz";
+    case "pending":
+    default:
+      return "Bekliyor";
+  }
+}
+
+export function formatAppStatusLabel(status: string | null | undefined) {
+  switch (String(status ?? "").trim().toLowerCase()) {
+    case "checking":
+      return "Kontrol ediliyor";
+    case "ready":
+      return "Ulasiliyor";
+    case "failed":
+      return "Ulasilmiyor";
     case "pending":
     default:
       return "Bekliyor";
@@ -205,14 +247,13 @@ export function getBusinessPublicTarget(hostname: string | null | undefined) {
   return null;
 }
 
-export function isDomainProviderConnected(
-  providerStatus: string | null | undefined,
-) {
+export function isDomainProviderConnected(providerStatus: string | null | undefined) {
   return String(providerStatus ?? "").trim().toLowerCase() !== "manual";
 }
 
 export function isDomainDnsHealthy(status: string | null | undefined) {
   switch (String(status ?? "").trim().toLowerCase()) {
+    case "detected":
     case "dns_detected":
     case "verified":
     case "ssl_ready":
@@ -233,17 +274,25 @@ export function isDomainSslReady(status: string | null | undefined) {
   }
 }
 
+export function isDomainAppReachable(status: string | null | undefined) {
+  return String(status ?? "").trim().toLowerCase() === "ready";
+}
+
 export function isDomainPubliclyReachable(input: {
   domainStatus?: string | null;
   domainProviderStatus?: string | null;
   sslStatus?: string | null;
+  dnsStatus?: string | null;
+  appStatus?: string | null;
 }) {
   const status = String(input.domainStatus ?? "").trim().toLowerCase();
 
   return (
     status === "active" &&
     isDomainProviderConnected(input.domainProviderStatus) &&
-    isDomainSslReady(input.sslStatus)
+    isDomainDnsHealthy(input.dnsStatus ?? status) &&
+    isDomainSslReady(input.sslStatus) &&
+    isDomainAppReachable(input.appStatus)
   );
 }
 
@@ -251,72 +300,79 @@ export function getDnsCnameTarget() {
   return getProductionTargetDomain() ?? "cname.vercel-dns.com";
 }
 
-function buildProviderGuide(provider: DomainProvider, hostname: string, token: string) {
+function buildProviderGuide(
+  provider: DomainProvider,
+  hostname: string,
+  token: string,
+  verification: DomainVerificationRecord | null,
+) {
   const apexHost = getApexHost(hostname);
   const subHost = getSubdomainHost(hostname);
+  const verificationHost = verification?.name?.trim() || "_vercel";
+  const verificationValue = verification?.value?.trim() || token;
 
   switch (provider) {
     case "cloudflare":
       return {
         guide: [
-          "Domaini Cloudflare DNS ekranına ekleyin.",
-          `A kaydını ${apexHost} için tanımlayın.`,
-          `CNAME kaydını ${subHost} için oluşturun.`,
-          `TXT doğrulama kaydına ${token} değerini girin.`,
+          "Domaini Cloudflare DNS ekranina ekleyin.",
+          `A kaydini ${apexHost} icin tanimlayin.`,
+          `CNAME kaydini ${subHost} icin olusturun.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} kullanin.`,
         ],
       };
     case "godaddy":
       return {
         guide: [
-          "GoDaddy DNS yönetiminden alan adını açın.",
-          `A kaydını ${apexHost} için ekleyin.`,
-          `CNAME kaydını ${subHost} için ekleyin.`,
-          `TXT doğrulama kaydına ${token} değerini yazın.`,
+          "GoDaddy DNS yonetiminden alan adini acin.",
+          `A kaydini ${apexHost} icin ekleyin.`,
+          `CNAME kaydini ${subHost} icin ekleyin.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} yazin.`,
         ],
       };
     case "namecheap":
       return {
         guide: [
-          "Namecheap Advanced DNS bölümünü açın.",
-          `A kaydını ${apexHost} için tanımlayın.`,
-          `CNAME kaydını ${subHost} için oluşturun.`,
-          `TXT kaydına ${token} doğrulama tokenini ekleyin.`,
+          "Namecheap Advanced DNS bolumunu acin.",
+          `A kaydini ${apexHost} icin tanimlayin.`,
+          `CNAME kaydini ${subHost} icin olusturun.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} ekleyin.`,
         ],
       };
     case "turhost":
       return {
         guide: [
-          "Turhost DNS panelinden kayıt ekleyin.",
-          `A kaydını ${apexHost} için oluşturun.`,
-          `CNAME kaydını ${subHost} için yönlendirin.`,
-          `TXT doğrulama kaydına ${token} değerini girin.`,
+          "Turhost DNS panelinden kayit ekleyin.",
+          `A kaydini ${apexHost} icin olusturun.`,
+          `CNAME kaydini ${subHost} icin yonlendirin.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} kullanin.`,
         ],
       };
     case "natro":
       return {
         guide: [
-          "Natro DNS yönetim alanına giriş yapın.",
-          `A kaydını ${apexHost} için ekleyin.`,
-          `CNAME kaydını ${subHost} için ekleyin.`,
-          `TXT doğrulama alanına ${token} ekleyin.`,
+          "Natro DNS yonetim alanina giris yapin.",
+          `A kaydini ${apexHost} icin ekleyin.`,
+          `CNAME kaydini ${subHost} icin ekleyin.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} ekleyin.`,
         ],
       };
     case "isimtescil":
       return {
         guide: [
-          "İsimtescil DNS yönetim ekranını açın.",
-          `A kaydını ${apexHost} için oluşturun.`,
-          `CNAME kaydını ${subHost} için oluşturun.`,
-          `TXT doğrulama kaydını ${token} ile doldurun.`,
+          "Isimtescil DNS yonetim ekranini acin.",
+          `A kaydini ${apexHost} icin olusturun.`,
+          `CNAME kaydini ${subHost} icin olusturun.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} doldurun.`,
         ],
       };
     case "hostinger":
       return {
         guide: [
-          "Hostinger DNS zone yönetimini açın.",
-          `A kaydını ${apexHost} için tanımlayın.`,
-          `CNAME kaydını ${subHost} için oluşturun.`,
-          `TXT doğrulama tokenini ${token} ile girin.`,
+          "Hostinger DNS zone yonetimini acin.",
+          `A kaydini ${apexHost} icin tanimlayin.`,
+          `CNAME kaydini ${subHost} icin olusturun.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} girin.`,
         ],
       };
     case "vercel":
@@ -324,40 +380,51 @@ function buildProviderGuide(provider: DomainProvider, hostname: string, token: s
     default:
       return {
         guide: [
-          "DNS yönetim ekranında domain kaydını açın.",
-          `Root domain için A kaydını ${apexHost} hedefi ile ekleyin.`,
-          `Subdomain için CNAME kaydını ${subHost} hedefi ile ekleyin.`,
-          `TXT doğrulama kaydına ${token} tokenini ekleyin.`,
+          "DNS yonetim ekraninda domain kaydini acin.",
+          `Root domain icin A kaydini ${apexHost} hedefi ile ekleyin.`,
+          `Subdomain icin CNAME kaydini ${subHost} hedefi ile ekleyin.`,
+          `TXT dogrulama gerekirse ${verificationHost} = ${verificationValue} kullanin.`,
         ],
       };
   }
 }
 
-function buildProviderRecords(hostname: string, token: string, cnameTarget: string) {
+function buildProviderRecords(
+  hostname: string,
+  token: string,
+  cnameTarget: string,
+  verification: DomainVerificationRecord | null,
+) {
   const apexHost = getApexHost(hostname);
   const subHost = getSubdomainHost(hostname);
-  const verifyHost = `_verify.${normalizeHost(hostname).replace(/^www\./i, "")}`;
+  const verificationHost = verification?.name?.trim() || "_vercel";
+  const verificationValue = verification?.value?.trim() || token;
 
-  return [
+  const records: DomainDnsRecord[] = [
     {
-      type: "A" as const,
+      type: "A",
       host: apexHost,
       value: "76.76.21.21",
-      note: "Root domain için A kaydı",
+      note: "Root domain icin A kaydi",
     },
     {
-      type: "CNAME" as const,
+      type: "CNAME",
       host: subHost,
       value: cnameTarget,
-      note: "Subdomain için CNAME",
-    },
-    {
-      type: "TXT" as const,
-      host: verifyHost,
-      value: token,
-      note: "TXT doğrulama tokeni",
+      note: "Subdomain icin CNAME",
     },
   ];
+
+  if (verification?.required || verificationValue) {
+    records.push({
+      type: "TXT",
+      host: verificationHost,
+      value: verificationValue,
+      note: verification?.required ? "Vercel ownership verification" : "TXT dogrulama tokeni",
+    });
+  }
+
+  return records;
 }
 
 export function buildDomainAdapters(
@@ -365,6 +432,7 @@ export function buildDomainAdapters(
   verificationToken: string,
   options?: {
     cnameTarget?: string | null;
+    verification?: DomainVerificationRecord | null;
   },
 ): DomainAdapter[] {
   const safeHostname = normalizeHost(hostname) || "firma.com";
@@ -386,7 +454,7 @@ export function buildDomainAdapters(
   return providers.map((provider) => ({
     provider,
     label: DOMAIN_PROVIDER_OPTIONS.find((item) => item.value === provider)?.label ?? provider,
-    guide: buildProviderGuide(provider, safeHostname, safeToken).guide,
-    records: buildProviderRecords(safeHostname, safeToken, cnameTarget),
+    guide: buildProviderGuide(provider, safeHostname, safeToken, options?.verification ?? null).guide,
+    records: buildProviderRecords(safeHostname, safeToken, cnameTarget, options?.verification ?? null),
   }));
 }
