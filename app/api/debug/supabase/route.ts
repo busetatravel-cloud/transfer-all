@@ -46,15 +46,29 @@ async function fetchBusinessCount(apiKey: string | null): Promise<DebugFetchResu
     };
   }
 
-  const response = await fetch(`${url.replace(/\/$/, "")}/rest/v1/businesses?select=id`, {
-    method: "GET",
-    headers: {
-      apikey: apiKey,
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${url.replace(/\/$/, "")}/rest/v1/businesses?select=id`, {
+      method: "GET",
+      headers: {
+        apikey: apiKey,
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    return {
+      count: null,
+      error: {
+        code: "network_error",
+        message: error instanceof Error ? error.message : "Supabase baglantisi kurulamadı.",
+        status: 503,
+        rawText: "",
+      },
+    };
+  }
 
   const rawText = await response.text().catch(() => "");
   const trimmed = rawText.trim();

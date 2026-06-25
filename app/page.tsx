@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   CardGrid,
   ContentCard,
@@ -68,7 +68,30 @@ export default async function HomePage({
   const site = await getLocalizedPublicSiteDataFromRequest(lang ?? null);
 
   if (!panel?.business || !site?.panel.business) {
-    notFound();
+    return (
+      <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#f8fafc_45%,_#ffffff_100%)] px-4 py-10 sm:px-6 lg:px-8">
+        <section className="mx-auto grid w-full max-w-3xl gap-6 rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
+          <div className="grid gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Site hazırlanıyor
+            </p>
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+              Site geçici olarak hazırlanıyor
+            </h1>
+            <p className="max-w-2xl text-base leading-8 text-slate-600">
+              Bu özel domain şu anda yayın için hazırlanıyor ya da arka plan bağlantılarından biri
+              eksik. Lütfen birkaç dakika sonra tekrar deneyin.
+            </p>
+          </div>
+
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+            <p>Custom domain: {host || "unknown"}</p>
+            <p>Hosting: Vercel</p>
+            <p>Durum: Public data şu an yüklenemiyor.</p>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   const business = site.panel.business;

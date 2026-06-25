@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     if (!supabaseUrl || !supabaseAnonKey) {
       return Response.json(
         { error: "supabase_config_missing" },
-        { status: 500 },
+        { status: 503 },
       );
     }
 
@@ -97,10 +97,21 @@ export async function POST(req: Request) {
 
     return response;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/fetch failed|getaddrinfo|ENOTFOUND|Supabase|connect/i.test(message)) {
+      return Response.json(
+        {
+          error: "supabase_connection_failed",
+          message: "Supabase baglantisi kurulamadı.",
+        },
+        { status: 503 },
+      );
+    }
+
     return Response.json(
       {
         error: "invalid_request_body",
-        message: String(error),
+        message,
       },
       { status: 400 },
     );

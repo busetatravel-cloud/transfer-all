@@ -19,14 +19,22 @@ export async function getPublicSiteDataByHost(
     return null;
   }
 
-  const business = await getActiveBusinessByDomain(normalizedHost);
+  try {
+    const business = await getActiveBusinessByDomain(normalizedHost);
 
-  if (!business) {
+    if (!business) {
+      return null;
+    }
+
+    await ensureBusinessPublicationSeeded(business.id);
+    return getPublishedBusinessPanelDataByBusinessId(business.id);
+  } catch (error) {
+    console.warn("getPublicSiteDataByHost failed", {
+      host: normalizedHost,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
-
-  await ensureBusinessPublicationSeeded(business.id);
-  return getPublishedBusinessPanelDataByBusinessId(business.id);
 }
 
 export async function getPublicSiteDataFromRequest() {
@@ -38,8 +46,15 @@ export async function getPublicSiteDataFromRequest() {
 export async function getLocalizedPublicSiteDataFromRequest(
   requestedLocale?: string | null,
 ): Promise<PublicSiteLocalization | null> {
-  const panel = await getPublicSiteDataFromRequest();
-  return getLocalizedPublicSiteData(panel, requestedLocale);
+  try {
+    const panel = await getPublicSiteDataFromRequest();
+    return getLocalizedPublicSiteData(panel, requestedLocale);
+  } catch (error) {
+    console.warn("getLocalizedPublicSiteDataFromRequest failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 export async function getPublicSiteDataByBusinessId(
@@ -51,12 +66,20 @@ export async function getPublicSiteDataByBusinessId(
     return null;
   }
 
-  const business = await getBusinessById(safeBusinessId);
+  try {
+    const business = await getBusinessById(safeBusinessId);
 
-  if (!business) {
+    if (!business) {
+      return null;
+    }
+
+    const panel = await getBusinessPanelData(safeBusinessId);
+    return panel.business ? panel : null;
+  } catch (error) {
+    console.warn("getPublicSiteDataByBusinessId failed", {
+      businessId: safeBusinessId,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
-
-  const panel = await getBusinessPanelData(safeBusinessId);
-  return panel.business ? panel : null;
 }
