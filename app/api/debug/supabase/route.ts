@@ -1,10 +1,3 @@
-import { NextResponse } from "next/server";
-import {
-  getSupabaseAnonKey,
-  getSupabaseServiceKey,
-  getSupabaseUrl,
-} from "@/lib/supabase-config";
-
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -18,9 +11,11 @@ type DebugFetchResult = {
   } | null;
 };
 
-function getUrlHost() {
-  const url = getSupabaseUrl();
+async function loadSupabaseConfig() {
+  return import("@/lib/supabase-config");
+}
 
+function getUrlHost(url: string | null) {
   if (!url) {
     return null;
   }
@@ -32,8 +27,10 @@ function getUrlHost() {
   }
 }
 
-async function fetchBusinessCount(apiKey: string | null): Promise<DebugFetchResult> {
-  const url = getSupabaseUrl();
+async function fetchBusinessCount(
+  url: string | null,
+  apiKey: string | null,
+): Promise<DebugFetchResult> {
 
   if (!url || !apiKey) {
     return {
@@ -125,19 +122,21 @@ async function fetchBusinessCount(apiKey: string | null): Promise<DebugFetchResu
 }
 
 export async function GET() {
+  const { getSupabaseAnonKey, getSupabaseServiceKey, getSupabaseUrl } = await loadSupabaseConfig();
+  const url = getSupabaseUrl();
   const serviceRoleKey = getSupabaseServiceKey();
   const anonKey = getSupabaseAnonKey();
 
   const [serviceRole, anon] = await Promise.all([
-    fetchBusinessCount(serviceRoleKey),
-    fetchBusinessCount(anonKey),
+    fetchBusinessCount(url, serviceRoleKey),
+    fetchBusinessCount(url, anonKey),
   ]);
 
-  return NextResponse.json({
+  return Response.json({
     hasNextPublicSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
     hasSupabaseServiceRoleKey: Boolean(serviceRoleKey),
     hasSupabaseAnonKey: Boolean(anonKey),
-    supabaseUrlHost: getUrlHost(),
+    supabaseUrlHost: getUrlHost(url),
     serviceRole,
     anon,
   });
