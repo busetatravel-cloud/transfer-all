@@ -5,7 +5,36 @@ import { useState, type FormEvent } from "react";
 import type { PaymentProviderKey } from "@/lib/payment-types";
 import type { PaymentRecord } from "@/lib/payment-types";
 import type { ReservationRecord } from "@/lib/reservation-types";
-import { formatPaymentStatusLabel } from "@/lib/payments";
+
+function formatPaymentStatusLabel(
+  status: string | null | undefined,
+) {
+  switch (String(status ?? "").trim().toLowerCase()) {
+    case "paid":
+    case "ödendi":
+      return "Ödendi";
+
+    case "pending":
+    case "bekliyor":
+      return "Bekliyor";
+
+    case "failed":
+    case "başarısız":
+      return "Başarısız";
+
+    case "cancelled":
+    case "canceled":
+    case "iptal":
+      return "İptal";
+
+    case "refunded":
+    case "iade":
+      return "İade edildi";
+
+    default:
+      return String(status ?? "").trim() || "Bekliyor";
+  }
+}
 
 type Props = {
   reservation: ReservationRecord;
@@ -316,3 +345,5 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+

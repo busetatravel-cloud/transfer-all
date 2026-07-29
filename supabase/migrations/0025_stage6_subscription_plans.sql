@@ -40,19 +40,19 @@ begin
 end $$;
 
 insert into public.subscription_plans (name, monthly_price, yearly_price, trial_days, features, active)
-select 'Starter', 49, 490, 7, array['Rezervasyon yönetimi', 'Temel bildirimler', 'Standart destek'], true
+select 'Starter', 49, 490, 7, array['Rezervasyon yÃ¶netimi', 'Temel bildirimler', 'Standart destek'], true
 where not exists (
   select 1 from public.subscription_plans where name = 'Starter'
 );
 
 insert into public.subscription_plans (name, monthly_price, yearly_price, trial_days, features, active)
-select 'Pro', 99, 990, 14, array['Yayın merkezi', 'Görevler', 'Gelişmiş operasyon'], true
+select 'Pro', 99, 990, 14, array['YayÄ±n merkezi', 'GÃ¶revler', 'GeliÅŸmiÅŸ operasyon'], true
 where not exists (
   select 1 from public.subscription_plans where name = 'Pro'
 );
 
 insert into public.subscription_plans (name, monthly_price, yearly_price, trial_days, features, active)
-select 'Enterprise', 199, 1990, 30, array['Özel domain', 'Özel destek', 'Çoklu ekip yönetimi'], true
+select 'Enterprise', 199, 1990, 30, array['Ã–zel domain', 'Ã–zel destek', 'Ã‡oklu ekip yÃ¶netimi'], true
 where not exists (
   select 1 from public.subscription_plans where name = 'Enterprise'
 );

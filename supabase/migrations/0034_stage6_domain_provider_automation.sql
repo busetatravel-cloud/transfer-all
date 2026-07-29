@@ -1,9 +1,12 @@
-do $$
+do $migration$
 begin
-  alter type domain_status add value if not exists 'provider_added';
+  alter type public.domain_status
+    add value if not exists 'provider_added';
 exception
-  when duplicate_object then null;
-end $$;
+  when duplicate_object then
+    null;
+end
+$migration$;
 
 alter table public.businesses
   add column if not exists domain_provider text not null default 'manual',
@@ -13,18 +16,32 @@ alter table public.businesses
 
 update public.businesses
 set
-  domain_provider = coalesce(domain_provider, 'manual'),
-  provider_status = coalesce(
-    provider_status,
-    case
-      when domain_status = 'provider_added' then 'provider_added'
-      when domain_status = 'failed' then 'failed'
-      else 'manual'
-    end
+  domain_provider = coalesce(
+    nullif(trim(domain_provider), ''),
+    'manual'
   ),
-  provider_message = provider_message,
-  provider_synced_at = coalesce(provider_synced_at, updated_at)
+
+  provider_status = case
+    when domain_status::text = 'provider_added'
+      then 'provider_added'
+    when domain_status::text = 'failed'
+      then 'failed'
+    else coalesce(
+      nullif(trim(provider_status), ''),
+      'manual'
+    )
+  end,
+
+  provider_synced_at = coalesce(
+    provider_synced_at,
+    updated_at,
+    created_at
+  )
 where domain_provider is null
+   or trim(domain_provider) = ''
    or provider_status is null
-   or provider_message is null
+   or trim(provider_status) = ''
    or provider_synced_at is null;
+
+
+   

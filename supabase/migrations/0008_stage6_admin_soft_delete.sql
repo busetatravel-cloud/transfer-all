@@ -1,4 +1,4 @@
-﻿alter table users
+alter table users
   add column if not exists deleted_at timestamptz;
 
 drop index if exists uniq_primary_business_admin;

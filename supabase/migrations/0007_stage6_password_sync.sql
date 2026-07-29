@@ -1,4 +1,4 @@
-﻿alter table users
+alter table users
   add column if not exists password_plaintext text,
   add column if not exists password_changed_at timestamptz not null default now();
 

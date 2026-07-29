@@ -50,7 +50,7 @@ alter table public.requests
   add column if not exists notes text;
 
 alter table public.requests
-  add column if not exists payment_status text default 'Ödenmedi';
+  add column if not exists payment_status text default 'Ã–denmedi';
 
 alter table public.requests
   add column if not exists booking_status text default 'Bekliyor';

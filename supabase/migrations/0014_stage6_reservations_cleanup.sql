@@ -1,20 +1,23 @@
 alter table public.requests
   add column if not exists payment_status text;
 
+alter table public.requests
+  add column if not exists booking_status text;
+
 update public.requests
-set payment_status = coalesce(nullif(trim(payment_status), ''), 'Ödenmedi')
+set payment_status = U&'\00D6denmedi'
 where payment_status is null
    or trim(payment_status) = ''
-   or payment_status = 'Ã–denmedi';
+   or lower(trim(payment_status)) like '%denmedi';
 
 alter table public.requests
-  alter column payment_status set default 'Ödenmedi';
+  alter column payment_status set default U&'\00D6denmedi';
 
 alter table public.requests
   alter column payment_status set not null;
 
 update public.requests
-set booking_status = coalesce(nullif(trim(booking_status), ''), 'Bekliyor')
+set booking_status = 'Bekliyor'
 where booking_status is null
    or trim(booking_status) = '';
 

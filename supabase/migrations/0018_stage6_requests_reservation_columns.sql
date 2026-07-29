@@ -14,7 +14,7 @@ alter table public.requests
   add column if not exists remaining numeric,
   add column if not exists currency text not null default 'TRY',
   add column if not exists note text,
-  add column if not exists payment_status text not null default 'Ödenmedi',
+  add column if not exists payment_status text not null default 'Ã–denmedi',
   add column if not exists booking_status text not null default 'Bekliyor',
   add column if not exists source text not null default 'Manuel',
   add column if not exists assigned_vehicle text,
@@ -257,7 +257,7 @@ begin
 
   if has_col then
     update public.requests
-    set payment_status = coalesce(nullif(trim(payment_status), ''), 'Ödenmedi')
+    set payment_status = coalesce(nullif(trim(payment_status), ''), 'Ã–denmedi')
     where payment_status is null or trim(payment_status) = '';
   end if;
 
@@ -365,6 +365,6 @@ alter table public.requests
   alter column child_count set default 0,
   alter column baby_count set default 0,
   alter column currency set default 'TRY',
-  alter column payment_status set default 'Ödenmedi',
+  alter column payment_status set default 'Ã–denmedi',
   alter column booking_status set default 'Bekliyor',
   alter column source set default 'Manuel';

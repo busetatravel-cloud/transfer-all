@@ -46,7 +46,7 @@ begin
   ) then
     execute $sql$
       update public.requests
-      set payment_status = coalesce(nullif(trim(payment_status), ''), 'Ödenmedi')
+      set payment_status = coalesce(nullif(trim(payment_status), ''), 'Ã–denmedi')
       where payment_status is null
          or trim(payment_status) = ''
     $sql$;
@@ -55,4 +55,4 @@ end $$;
 
 alter table public.requests
   alter column booking_status set default 'Bekliyor',
-  alter column payment_status set default 'Ödenmedi';
+  alter column payment_status set default 'Ã–denmedi';

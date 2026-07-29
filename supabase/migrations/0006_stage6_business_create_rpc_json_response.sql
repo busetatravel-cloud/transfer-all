@@ -1,4 +1,8 @@
-﻿drop function if exists create_business_with_admin(text, text, text, text, text, text, text);
+do $migration$
+begin
+  execute 'drop function if exists public.create_business_with_admin(text, text, text, text, text, text, text)';
+end
+$migration$;
 
 create or replace function create_business_with_admin(
   p_name text,
