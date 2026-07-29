@@ -113,6 +113,60 @@ export default async function SuperAdminPage() {
             kendi panelini gorur.
           </p>
         </article>
+
+        <article className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Pricing Rules
+          </p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+            Tum tenant kurallarini yonet
+          </h3>
+          <p className="mt-2 text-sm leading-7 text-slate-600">
+            Super admin olarak tum business'larin pricing rules kayitlarini gorup duzenleyebilirsin.
+          </p>
+          <a
+            className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+            href="/super-admin/pricing-rules"
+          >
+            Pricing Rules modulu
+          </a>
+        </article>
+
+        <article className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Payments
+          </p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+            Tüm ödeme kayıtlarını izleme
+          </h3>
+          <p className="mt-2 text-sm leading-7 text-slate-600">
+            Tenant bazlı ödeme kayıtları, provider durumu ve checkout sonuçları tek ekranda.
+          </p>
+          <a
+            className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+            href="/super-admin/payments"
+          >
+            Payments modulu
+          </a>
+        </article>
+
+        <article className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Operations
+          </p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+            Tenant operasyon akışını izle
+          </h3>
+          <p className="mt-2 text-sm leading-7 text-slate-600">
+            Tüm işletmelerin operasyon board'u, atama durumu ve aktif transfer özetini tek yerden görüntüle.
+          </p>
+          <a
+            className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+            href="/super-admin/operations"
+          >
+            Operations modulu
+          </a>
+        </article>
       </div>
     </section>
   );

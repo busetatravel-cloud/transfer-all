@@ -3,6 +3,7 @@ import { requireApiBusinessSession } from "@/lib/auth";
 import { recordAuditLog } from "@/lib/audit";
 import { getReservationById, updateReservation } from "@/lib/reservation-service";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
+import { ensureNoBusinessIdSpoofing } from "@/lib/tenant-security";
 
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -87,6 +88,18 @@ export async function PATCH(
     string,
     unknown
   > | null;
+
+  try {
+    ensureNoBusinessIdSpoofing(body, auth.session.businessId);
+  } catch (error) {
+    return buildErrorResponse(
+      400,
+      "validation_error",
+      error instanceof Error && error.message === "business_id_mismatch"
+        ? "businessId session ile uyusmuyor."
+        : "Gecersiz istek.",
+    );
+  }
 
   console.info("business.reservations.patch", {
     businessId: auth.session.businessId,

@@ -1,8 +1,8 @@
-import { BusinessPanelModulePage } from "@/components/business-panel-module-page";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default function OperationPage() {
-  return BusinessPanelModulePage({ module: "operation" });
+  redirect("/app/operations");
 }

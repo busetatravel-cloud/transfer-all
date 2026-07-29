@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiBusinessSession } from "@/lib/auth";
 import { recordAuditLog } from "@/lib/audit";
 import { createReservation, listReservations } from "@/lib/reservation-service";
+import { ensureNoBusinessIdSpoofing } from "@/lib/tenant-security";
 
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -69,6 +70,18 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
 
+  try {
+    ensureNoBusinessIdSpoofing(body, auth.session.businessId);
+  } catch (error) {
+    return buildErrorResponse(
+      400,
+      "validation_error",
+      error instanceof Error && error.message === "business_id_mismatch"
+        ? "businessId session ile uyusmuyor."
+        : "Gecersiz istek.",
+    );
+  }
+
   console.info("business.reservations.post", {
     businessId: auth.session.businessId,
     bodyAction: body?.action,
@@ -77,7 +90,9 @@ export async function POST(request: Request) {
   });
 
   const customerName = normalizeText(
-    parseBodyField(body, "customer_name") ?? parseBodyField(body, "customerName"),
+    parseBodyField(body, "customer_name") ??
+      parseBodyField(body, "customerName") ??
+      parseBodyField(body, "passengerName"),
   );
   const from =
     normalizeText(
@@ -99,6 +114,9 @@ export async function POST(request: Request) {
     normalizeText(
       parseBodyField(body, "travel_time") ?? parseBodyField(body, "travelTime"),
     ) || "";
+  const tripType =
+    normalizeText(parseBodyField(body, "tripType") ?? parseBodyField(body, "trip_type")) ||
+    "one_way";
 
   console.info("business.reservations.create.required", {
     businessId: auth.session.businessId,
@@ -128,17 +146,29 @@ export async function POST(request: Request) {
 
   try {
     const reservation = await createReservation(auth.session.businessId, {
-      customerName,
-      phone: normalizeOptionalText(parseBodyField(body, "phone")),
-      email: normalizeOptionalText(parseBodyField(body, "email")),
-      country: normalizeOptionalText(parseBodyField(body, "country")),
-      language: normalizeOptionalText(parseBodyField(body, "language")) ?? "tr",
-      fromLocation: from,
-      toLocation: to,
-      travelDate,
-      travelTime,
-      flightCode: normalizeOptionalText(parseBodyField(body, "flightCode")),
-      adultCount: normalizeNumber(parseBodyField(body, "adultCount"), 0),
+    customerName,
+    phone: normalizeOptionalText(parseBodyField(body, "phone")),
+    email: normalizeOptionalText(parseBodyField(body, "email")),
+    country: normalizeOptionalText(parseBodyField(body, "country")),
+    language: normalizeOptionalText(parseBodyField(body, "language")) ?? "tr",
+    fromLocation: from,
+    toLocation: to,
+    passengerName: normalizeOptionalText(parseBodyField(body, "passengerName")),
+    tripType,
+    travelDate,
+    travelTime,
+    flightCode: normalizeOptionalText(parseBodyField(body, "flightCode")),
+    hotelNameOrAddress: normalizeOptionalText(
+      parseBodyField(body, "hotelNameOrAddress") ??
+        parseBodyField(body, "hotel_name_or_address"),
+    ),
+    childSeatRequested:
+      Boolean(parseBodyField(body, "childSeatRequested")) ||
+      Boolean(parseBodyField(body, "child_seat_requested")),
+    extraBaggageRequested:
+      Boolean(parseBodyField(body, "extraBaggageRequested")) ||
+      Boolean(parseBodyField(body, "extra_baggage_requested")),
+    adultCount: normalizeNumber(parseBodyField(body, "adultCount"), 0),
       childCount: normalizeNumber(parseBodyField(body, "childCount"), 0),
       babyCount: normalizeNumber(parseBodyField(body, "babyCount"), 0),
       vehicleCategory: normalizeOptionalText(parseBodyField(body, "vehicleCategory")),

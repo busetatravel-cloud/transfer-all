@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local Supabase CLI session dirs
+.cli-home/
+.cli-config/
+
+supabase/.temp/

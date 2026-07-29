@@ -3,6 +3,7 @@ import { requireBusinessSession } from "@/lib/auth";
 import { getBusinessAnalyticsSummary } from "@/lib/analytics";
 import { getBusinessPanelData } from "@/lib/business-panel";
 import { getUnreadNotificationCount } from "@/lib/notifications";
+import { getOperationsBoardDataWithLookup } from "@/lib/operations";
 import { listTasks } from "@/lib/tasks";
 
 export const dynamic = "force-dynamic";
@@ -20,23 +21,26 @@ const modules = [
   { href: "/app/seo", title: "SEO", description: "Meta alanları." },
   { href: "/app/languages", title: "Languages", description: "Dil içerikleri." },
   { href: "/app/reservations", title: "Reservations", description: "Rezervasyonlar." },
+  { href: "/app/pricing-rules", title: "Pricing Rules", description: "Dinamik fiyat kuralları." },
   { href: "/app/tasks", title: "Görevler", description: "Hatırlatmalar ve iş akışları." },
   { href: "/app/search", title: "Arama", description: "Global business araması." },
   { href: "/app/analytics", title: "Analytics", description: "Ziyaret ve dönüşüm." },
   { href: "/app/publishing", title: "Yayın Merkezi", description: "Taslak ve yayın geçmişi." },
-  { href: "/app/operation", title: "Operation", description: "Günlük operasyon." },
+  { href: "/app/operations", title: "Operations", description: "Günlük operasyon ve atama merkezi." },
   { href: "/app/finance", title: "Finance", description: "Tahsilat ve ciro." },
+  { href: "/app/payments", title: "Payments", description: "Ödeme kayıtları ve checkout." },
   { href: "/app/customers", title: "Customers", description: "CRM ve müşteri kartları." },
   { href: "/app/password", title: "Password", description: "Admin şifresi." },
 ];
 
 export default async function BusinessDashboardPage() {
   const session = await requireBusinessSession();
-  const [panel, tasks, unreadNotifications, analytics] = await Promise.all([
+  const [panel, tasks, unreadNotifications, analytics, operations] = await Promise.all([
     getBusinessPanelData(session.businessId),
     listTasks(session.businessId),
     getUnreadNotificationCount(session.businessId),
     getBusinessAnalyticsSummary(session.businessId),
+    getOperationsBoardDataWithLookup(session.businessId),
   ]);
 
   if (!panel.business) {
@@ -88,6 +92,7 @@ export default async function BusinessDashboardPage() {
 
   const financeStats = buildFinanceStats(reservations, todayKey);
   const financeCurrency = buildFinanceCurrency(reservations);
+  const operationsStats = operations.summary;
 
   return (
     <section className="grid gap-6">
@@ -156,6 +161,16 @@ export default async function BusinessDashboardPage() {
             <Metric label="Toplam ziyaret" value={String(analytics.totalVisits)} />
             <Metric label="Dönüşüm" value={String(analytics.conversions)} />
             <Metric label="Oran" value={`${analytics.conversionRate}%`} />
+          </div>
+        </article>
+
+        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Operations özeti</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Metric label="Bugünkü transfer" value={String(operationsStats.todayTransfers)} />
+            <Metric label="Atama bekleyen" value={String(operationsStats.waitingAssignments)} />
+            <Metric label="Aktif transfer" value={String(operationsStats.activeTransfers)} />
+            <Metric label="Tamamlanan" value={String(operationsStats.completedTransfers)} />
           </div>
         </article>
 

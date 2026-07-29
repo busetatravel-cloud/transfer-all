@@ -11,6 +11,7 @@ import {
   type ReservationUpdateInput,
 } from "@/lib/reservation-types";
 import type { BusinessRequestRecord } from "@/lib/requests";
+import { createReservationPaymentRecord } from "@/lib/payments";
 import { syncBusinessVoucherFromReservation } from "@/lib/vouchers";
 
 const DEMO_BUSINESS_ID = "business-demo-1";
@@ -22,6 +23,7 @@ const demoReservations = new Map<string, ReservationRecord[]>([
       {
         id: "reservation-1",
         businessId: DEMO_BUSINESS_ID,
+        passengerName: "Demo Müşteri",
         customerName: "Demo Müşteri",
         phone: "+90 555 111 22 33",
         email: "demo@example.com",
@@ -29,12 +31,16 @@ const demoReservations = new Map<string, ReservationRecord[]>([
         language: "tr",
         origin: "Airport",
         destination: "Hotel",
+        tripType: "one_way",
+        hotelNameOrAddress: "Demo Hotel",
         travelDate: "2026-06-10",
         travelTime: "10:30",
         flightCode: "TK123",
         adultCount: 2,
         childCount: 1,
         babyCount: 0,
+        childSeatRequested: false,
+        extraBaggageRequested: false,
         vehicleCategory: "VIP",
         vehicleName: "VIP Van",
         supplierName: "Demo Supplier",
@@ -154,18 +160,23 @@ function mapReservation(row: Record<string, unknown>): ReservationRecord {
     id: String(row.id ?? ""),
     businessId: String(row.business_id ?? ""),
     customerName: String(row.customer_name ?? ""),
+    passengerName: (row.passenger_name as string | null) ?? null,
     phone: (row.phone as string | null) ?? null,
     email: (row.email as string | null) ?? null,
     country: (row.country as string | null) ?? null,
     language: (row.language as string | null) ?? null,
     origin: (row.from_location as string | null) ?? null,
     destination: (row.to_location as string | null) ?? null,
+    tripType: String(row.trip_type ?? "one_way"),
+    hotelNameOrAddress: (row.hotel_name_or_address as string | null) ?? null,
     travelDate: (row.travel_date as string | null) ?? null,
     travelTime: (row.travel_time as string | null) ?? null,
     flightCode: (row.flight_code as string | null) ?? null,
     adultCount: Number(row.adult_count ?? 1),
     childCount: Number(row.child_count ?? 0),
     babyCount: Number(row.baby_count ?? 0),
+    childSeatRequested: Boolean(row.child_seat_requested ?? false),
+    extraBaggageRequested: Boolean(row.extra_baggage_requested ?? false),
     vehicleCategory: (row.vehicle_category as string | null) ?? null,
     vehicleName: (row.vehicle_name as string | null) ?? null,
     supplierName: (row.supplier_name as string | null) ?? null,
@@ -220,8 +231,11 @@ function sanitizeReservationCreatePayload(
   input: ReservationCreateInput,
 ) {
   const customerName = normalizeText(input.customerName);
+  const passengerName = normalizeText(input.passengerName ?? input.customerName);
   const fromLocation = normalizeText(input.fromLocation ?? input.origin);
   const toLocation = normalizeText(input.toLocation ?? input.destination);
+  const tripType = normalizeText(input.tripType) || "one_way";
+  const hotelNameOrAddress = normalizeOptionalText(input.hotelNameOrAddress);
   const travelDate = normalizeText(input.travelDate);
   const travelTime = normalizeText(input.travelTime);
   const vehicleName = normalizeOptionalText(input.vehicleName);
@@ -239,18 +253,23 @@ function sanitizeReservationCreatePayload(
   const payload = {
     business_id: businessId,
     customer_name: customerName,
+    passenger_name: passengerName || customerName,
     phone: normalizeOptionalText(input.phone),
     email: normalizeOptionalText(input.email),
     country: normalizeOptionalText(input.country),
     language: normalizeOptionalText(input.language) ?? "tr",
     from_location: fromLocation || null,
     to_location: toLocation || null,
+    trip_type: tripType,
+    hotel_name_or_address: hotelNameOrAddress,
     travel_date: travelDate || null,
     travel_time: travelTime || null,
     flight_code: normalizeOptionalText(input.flightCode),
     adult_count: normalizeCount(input.adultCount ?? input.adults) || 1,
     child_count: normalizeCount(input.childCount ?? input.children),
     baby_count: normalizeCount(input.babyCount ?? input.infants),
+    child_seat_requested: Boolean(input.childSeatRequested),
+    extra_baggage_requested: Boolean(input.extraBaggageRequested),
     vehicle_category: normalizeOptionalText(input.vehicleCategory),
     vehicle_name: vehicleName,
     supplier_name: supplierName,
@@ -325,7 +344,7 @@ async function readErrorMessage(response: Response | null, fallback: string) {
 export async function listReservations(businessId: string) {
   if (hasSupabaseConnection()) {
     const rows = await readRows(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,passenger_name,phone,email,country,language,from_location,to_location,trip_type,hotel_name_or_address,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,child_seat_requested,extra_baggage_requested,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&business_id=eq.${encodeURIComponent(
         businessId,
       )}&order=created_at.desc`,
     );
@@ -342,7 +361,7 @@ export async function getReservationById(
 ) {
   if (hasSupabaseConnection()) {
     const rows = await readRows(
-      `/requests?select=id,business_id,customer_name,phone,email,country,language,from_location,to_location,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
+      `/requests?select=id,business_id,customer_name,passenger_name,phone,email,country,language,from_location,to_location,trip_type,hotel_name_or_address,travel_date,travel_time,flight_code,adult_count,child_count,baby_count,child_seat_requested,extra_baggage_requested,vehicle_category,vehicle_name,supplier_name,agency_name,assigned_vehicle,driver_name,pickup_status,operation_notes,collected_amount,supplier_pass,agency_pass,supplier_collection,profit,total_amount,deposit_amount,remaining_amount,currency,payment_status,notes,source,booking_status,message,status,created_at&id=eq.${encodeURIComponent(
         reservationId,
       )}&business_id=eq.${encodeURIComponent(businessId)}&limit=1`,
     );
@@ -409,6 +428,24 @@ export async function createReservation(
     }
 
     try {
+      await createReservationPaymentRecord({
+        businessId,
+        reservationId: created.id,
+        provider: "manual",
+        amount: Number(created.totalAmount ?? 0),
+        currency: created.currency ?? "TRY",
+        status: "Pending",
+        transactionReference: null,
+      });
+    } catch (error) {
+      console.warn("payment.create.failed", {
+        businessId,
+        reservationId: created.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
       await createNotification(businessId, {
         type: "Yeni rezervasyon",
         title: `Yeni rezervasyon: ${created.customerName}`,
@@ -431,18 +468,23 @@ export async function createReservation(
     id: `reservation-${randomUUID()}`,
     businessId,
     customerName: payload.customer_name,
+    passengerName: (payload.passenger_name as string | null) ?? null,
     phone: payload.phone,
     email: payload.email,
     country: payload.country,
     language: payload.language,
     origin: (payload.from_location as string | null) ?? null,
     destination: (payload.to_location as string | null) ?? null,
+    tripType: String(payload.trip_type ?? "one_way"),
+    hotelNameOrAddress: (payload.hotel_name_or_address as string | null) ?? null,
     travelDate: payload.travel_date,
     travelTime: payload.travel_time,
     flightCode: payload.flight_code,
     adultCount: payload.adult_count,
     childCount: payload.child_count,
     babyCount: payload.baby_count,
+    childSeatRequested: Boolean(payload.child_seat_requested ?? false),
+    extraBaggageRequested: Boolean(payload.extra_baggage_requested ?? false),
     vehicleCategory: payload.vehicle_category,
     vehicleName: (payload.vehicle_name as string | null) ?? null,
     supplierName: (payload.supplier_name as string | null) ?? null,
@@ -482,21 +524,39 @@ export async function createReservation(
     notes: record.notes ?? record.message ?? undefined,
   });
 
-  try {
-    await syncBusinessVoucherFromReservation(
-      businessId,
-      record as unknown as BusinessRequestRecord,
-    );
+    try {
+      await syncBusinessVoucherFromReservation(
+        businessId,
+        record as unknown as BusinessRequestRecord,
+      );
   } catch (error) {
     console.warn("voucher.create.failed", {
       businessId,
       reservationId: record.id,
       error: error instanceof Error ? error.message : String(error),
-    });
-  }
+      });
+    }
 
-  try {
-    await createNotification(businessId, {
+    try {
+      await createReservationPaymentRecord({
+        businessId,
+        reservationId: record.id,
+        provider: "manual",
+        amount: Number(record.totalAmount ?? 0),
+        currency: record.currency ?? "TRY",
+        status: "Pending",
+        transactionReference: null,
+      });
+    } catch (error) {
+      console.warn("payment.create.failed", {
+        businessId,
+        reservationId: record.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
+      await createNotification(businessId, {
       type: "Yeni rezervasyon",
       title: `Yeni rezervasyon: ${record.customerName}`,
       message: `${record.customerName} için yeni rezervasyon oluşturuldu.`,
@@ -552,6 +612,18 @@ export async function updateReservation(
 
   if (input.vehicleCategory !== undefined) {
     patchPayload.vehicle_category = normalizeOptionalText(input.vehicleCategory);
+  }
+
+  if (input.passengerName !== undefined) {
+    patchPayload.passenger_name = normalizeOptionalText(input.passengerName);
+  }
+
+  if (input.tripType !== undefined) {
+    patchPayload.trip_type = normalizeOptionalText(input.tripType) || "one_way";
+  }
+
+  if (input.hotelNameOrAddress !== undefined) {
+    patchPayload.hotel_name_or_address = normalizeOptionalText(input.hotelNameOrAddress);
   }
 
   if (input.supplierName !== undefined) {
@@ -614,6 +686,14 @@ export async function updateReservation(
     patchPayload.remaining_amount = normalizeAmount(input.remainingAmount);
   }
 
+  if (input.childSeatRequested !== undefined) {
+    patchPayload.child_seat_requested = Boolean(input.childSeatRequested);
+  }
+
+  if (input.extraBaggageRequested !== undefined) {
+    patchPayload.extra_baggage_requested = Boolean(input.extraBaggageRequested);
+  }
+
   if (hasSupabaseConnection()) {
     const response = await supabaseFetch(
       `/requests?id=eq.${encodeURIComponent(recordId)}&business_id=eq.${encodeURIComponent(
@@ -665,6 +745,8 @@ export async function updateReservation(
 
   const updated: ReservationRecord = {
     ...existing,
+    passengerName:
+      (patchPayload.passenger_name as string | null | undefined) ?? existing.passengerName,
     assignedVehicle:
       (patchPayload.assigned_vehicle as string | null | undefined) ?? existing.assignedVehicle,
     driverName: (patchPayload.driver_name as string | null | undefined) ?? existing.driverName,
@@ -678,6 +760,10 @@ export async function updateReservation(
       (patchPayload.vehicle_name as string | null | undefined) ?? existing.vehicleName,
     vehicleCategory:
       (patchPayload.vehicle_category as string | null | undefined) ?? existing.vehicleCategory,
+    tripType: (patchPayload.trip_type as string | undefined) ?? existing.tripType,
+    hotelNameOrAddress:
+      (patchPayload.hotel_name_or_address as string | null | undefined) ??
+      existing.hotelNameOrAddress,
     supplierName:
       (patchPayload.supplier_name as string | null | undefined) ?? existing.supplierName,
     agencyName:
@@ -700,6 +786,11 @@ export async function updateReservation(
       (patchPayload.deposit_amount as number | null | undefined) ?? existing.depositAmount,
     remainingAmount:
       (patchPayload.remaining_amount as number | null | undefined) ?? existing.remainingAmount,
+    childSeatRequested:
+      (patchPayload.child_seat_requested as boolean | undefined) ?? existing.childSeatRequested,
+    extraBaggageRequested:
+      (patchPayload.extra_baggage_requested as boolean | undefined) ??
+      existing.extraBaggageRequested,
   };
 
   demoReservations.set(

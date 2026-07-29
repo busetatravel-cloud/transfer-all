@@ -41,6 +41,11 @@ export const superAdminNav: PanelNavItem[] = [
     description: "Firma listesi ve hesaplar",
   },
   {
+    href: "/super-admin/payments",
+    label: "Payments",
+    description: "Tüm tenant ödeme kayıtları",
+  },
+  {
     href: "/super-admin#settings",
     label: "Settings",
     description: "Paket, domain ve AI planı",
@@ -139,14 +144,19 @@ export const businessAdminNav: PanelNavItem[] = [
     description: "Değişiklik kayıtları",
   },
   {
-    href: "/app/operation",
-    label: "Operation",
-    description: "Günlük operasyon",
+    href: "/app/operations",
+    label: "Operations",
+    description: "Günlük operasyon ve atama merkezi",
   },
   {
     href: "/app/finance",
     label: "Finance",
     description: "Tahsilat ve ciro",
+  },
+  {
+    href: "/app/payments",
+    label: "Payments",
+    description: "Ödeme kayıtları ve checkout akışı",
   },
   {
     href: "/app/customers",

@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "seed:super-admin": "node supabase/seed-super-admin.mjs",
-    "test:business-create": "node --test supabase/tests/create-business-flow.test.mjs"
+    "test:business-create": "node --test supabase/tests/create-business-flow.test.mjs",
+    "test:tenant-security": "node --test supabase/tests/tenant-rls-security.test.mjs",
+    "supabase:status": "node scripts/check-live-migration-status.mjs",
+    "supabase:migrate:live": "node scripts/apply-live-migrations.mjs",
+    "security:validate:live": "node scripts/validate-live-tenant-security.mjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",
@@ -25,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "supabase": "^2.110.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

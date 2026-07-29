@@ -2,18 +2,23 @@ export type ReservationRecord = {
   id: string;
   businessId: string;
   customerName: string;
+  passengerName: string | null;
   phone: string | null;
   email: string | null;
   country: string | null;
   language: string | null;
   origin: string | null;
   destination: string | null;
+  tripType: string;
+  hotelNameOrAddress: string | null;
   travelDate: string | null;
   travelTime: string | null;
   flightCode: string | null;
   adultCount: number;
   childCount: number;
   babyCount: number;
+  childSeatRequested: boolean;
+  extraBaggageRequested: boolean;
   vehicleCategory: string | null;
   vehicleName: string | null;
   supplierName: string | null;
@@ -42,12 +47,15 @@ export type ReservationRecord = {
 
 export type ReservationCreateInput = {
   customerName: string;
+  passengerName?: string;
   phone?: string;
   email?: string;
   country?: string;
   language?: string;
   fromLocation?: string;
   toLocation?: string;
+  tripType?: string;
+  hotelNameOrAddress?: string;
   date?: string;
   time?: string;
   origin?: string;
@@ -55,6 +63,8 @@ export type ReservationCreateInput = {
   travelDate?: string;
   travelTime?: string;
   flightCode?: string;
+  childSeatRequested?: boolean;
+  extraBaggageRequested?: boolean;
   vehicle?: string;
   total?: number | string;
   deposit?: number | string;
