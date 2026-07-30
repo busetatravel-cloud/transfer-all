@@ -12,7 +12,10 @@
     "test:tenant-security": "node --test supabase/tests/tenant-rls-security.test.mjs",
     "supabase:status": "node scripts/check-live-migration-status.mjs",
     "supabase:migrate:live": "node scripts/apply-live-migrations.mjs",
-    "security:validate:live": "node scripts/validate-live-tenant-security.mjs"
+    "security:validate:live": "node scripts/validate-live-tenant-security.mjs",
+    "migration:analyze": "node scripts/migration-analyze.mjs",
+    "migration:repair-plan": "node scripts/migration-repair-plan.mjs",
+    "migration:validate": "node scripts/migration-validate.mjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",

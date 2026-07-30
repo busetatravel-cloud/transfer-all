@@ -166,6 +166,27 @@ export function extractVersion(name) {
   return match ? match[1] : null;
 }
 
+// Bu proje iki farklı migration adlandırma biçimini aynı anda barındırıyor:
+// - "sequential": proje-özel 4 haneli sayaç (0001, 0002, ..., 0043)
+// - "timestamp": Supabase CLI'nin kendi varsayılan biçimi (YYYYMMDDHHMMSS, 14 hane)
+// Bu ikisini AYNI sayısal boşluk-doldurma (gap-fill) mantığına sokmak felakete yol
+// açar: bir "timestamp" versiyonu (örn. 20260729222943) en büyük sequential versiyonla
+// (örn. 0043) aynı diziye girerse, aralarındaki "eksik sayı" taraması trilyonlarca
+// adımlık bir döngüye dönüşür ve bellek taşmasına (OOM) neden olur.
+export function isSequentialVersion(version) {
+  return /^\d{4}$/.test(String(version ?? ""));
+}
+
+export function isTimestampVersion(version) {
+  return /^\d{14}$/.test(String(version ?? ""));
+}
+
+// Gap-fill döngüsünün büyüklüğünü sınırlayan güvenlik tavanı. 4 haneli sequential
+// versiyonlar için en kötü ihtimalle aralık 9999 olabilir; bu değer onun çok
+// üzerinde ama "gelecekte beklenmeyen bir versiyon biçimi sızarsa bile OOM asla
+// tekrarlanmasın" garantisini veriyor.
+export const MAX_GAP_FILL_RANGE = 100000;
+
 export async function readLocalMigrationVersions() {
   const entries = await readdir(migrationDir, { withFileTypes: true });
   const files = entries
@@ -188,15 +209,27 @@ export async function analyzeLocalMigrationSet() {
   const { files, versions } = await readLocalMigrationVersions();
   const prefixMap = new Map();
   const numericVersions = [];
+  const timestampVersions = [];
+  const unrecognizedVersions = [];
 
   for (const item of versions) {
     const list = prefixMap.get(item.version) ?? [];
     list.push(item.name);
     prefixMap.set(item.version, list);
 
-    const parsed = Number.parseInt(item.version, 10);
-    if (Number.isFinite(parsed)) {
-      numericVersions.push(parsed);
+    // Yalnızca sequential (4 haneli) versiyonlar sayısal boşluk taramasına girer.
+    // Timestamp (14 haneli) versiyonlar doğası gereği "ardışık" değildir (belirli
+    // anları temsil ederler), bu yüzden aralarında "eksik numara" aramak hem
+    // anlamsız hem de tehlikelidir (OOM kök nedeni).
+    if (isSequentialVersion(item.version)) {
+      const parsed = Number.parseInt(item.version, 10);
+      if (Number.isFinite(parsed)) {
+        numericVersions.push(parsed);
+      }
+    } else if (isTimestampVersion(item.version)) {
+      timestampVersions.push(item.name);
+    } else {
+      unrecognizedVersions.push(item.name);
     }
   }
 
@@ -206,10 +239,20 @@ export async function analyzeLocalMigrationSet() {
 
   const sortedUniqueVersions = Array.from(new Set(numericVersions)).sort((left, right) => left - right);
   const missingNumbers = [];
+  let missingNumbersSkipped = false;
   if (sortedUniqueVersions.length > 0) {
-    for (let current = sortedUniqueVersions[0]; current <= sortedUniqueVersions[sortedUniqueVersions.length - 1]; current += 1) {
-      if (!sortedUniqueVersions.includes(current)) {
-        missingNumbers.push(String(current).padStart(4, "0"));
+    const rangeSize = sortedUniqueVersions[sortedUniqueVersions.length - 1] - sortedUniqueVersions[0];
+
+    // Güvenlik tavanı: sequential versiyonlar için bile beklenmedik şekilde devasa
+    // bir aralık oluşursa (örn. gelecekte yanlışlıkla eklenecek 5+ haneli bir dosya),
+    // sonsuz/aşırı büyük bir döngüye girmek yerine taramayı atla ve durumu bildir.
+    if (rangeSize > MAX_GAP_FILL_RANGE) {
+      missingNumbersSkipped = true;
+    } else {
+      for (let current = sortedUniqueVersions[0]; current <= sortedUniqueVersions[sortedUniqueVersions.length - 1]; current += 1) {
+        if (!sortedUniqueVersions.includes(current)) {
+          missingNumbers.push(String(current).padStart(4, "0"));
+        }
       }
     }
   }
@@ -250,7 +293,10 @@ export async function analyzeLocalMigrationSet() {
     duplicatePrefixes,
     versionOrderIssues,
     missingNumbers,
+    missingNumbersSkipped,
     duplicateContents,
+    timestampVersions,
+    unrecognizedVersions,
   };
 }
 
