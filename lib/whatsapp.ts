@@ -21,6 +21,55 @@ function normalizeText(value?: string | null) {
   return safe || "";
 }
 
+// sendVoucherWhatsApp içinde, Meta/Twilio try/catch bloklarına girmeden ÖNCE fırlatılır;
+// böylece geçersiz telefon hatası diğer provider hataları gibi yutulup placeholder'a
+// düşürülmez, çağırana (route) kadar ulaşır.
+export class InvalidWhatsAppPhoneError extends Error {}
+
+// Telefon numarasını "+<ülke kodu><abone numarası>" (E.164) kanonik formuna çevirir.
+// Ayraçları (boşluk, tire, parantez, nokta) kaldırır, "00" önekini "+" ile değiştirir.
+// Ülke kodu belirtilmemiş yerel numaraları OTOMATİK bir ülkeye bağlamaz — işletmenin
+// veya numaranın ülkesi kesin bilinmediği için bu durumda anlamlı bir hata fırlatır.
+export function normalizeWhatsAppPhone(rawValue: string | null | undefined): string {
+  const trimmed = String(rawValue ?? "").trim();
+
+  if (!trimmed) {
+    throw new InvalidWhatsAppPhoneError("Telefon numarası boş.");
+  }
+
+  let cleaned = trimmed.replace(/[\s\-().]/g, "");
+
+  if (cleaned.startsWith("00")) {
+    cleaned = `+${cleaned.slice(2)}`;
+  }
+
+  if (!cleaned.startsWith("+")) {
+    throw new InvalidWhatsAppPhoneError(
+      "Telefon numarası uluslararası formatta değil. Örnek: +905551112233",
+    );
+  }
+
+  const digits = cleaned.slice(1);
+
+  if (!digits || !/^\d+$/.test(digits)) {
+    throw new InvalidWhatsAppPhoneError(
+      "Telefon numarası uluslararası formatta değil. Örnek: +905551112233",
+    );
+  }
+
+  if (digits.length < 8 || digits.length > 15) {
+    throw new InvalidWhatsAppPhoneError(
+      "Telefon numarası uluslararası formatta değil. Örnek: +905551112233",
+    );
+  }
+
+  return `+${digits}`;
+}
+
+function ensureWhatsAppPrefix(value: string) {
+  return value.startsWith("whatsapp:") ? value : `whatsapp:${value}`;
+}
+
 function getMetaConfig() {
   const token = normalizeText(process.env.WHATSAPP_META_TOKEN);
   const phoneNumberId = normalizeText(process.env.WHATSAPP_META_PHONE_NUMBER_ID);
@@ -56,6 +105,11 @@ async function sendMetaWhatsApp(message: WhatsAppMessage): Promise<WhatsAppSendR
     };
   }
 
+  // Meta Cloud API "to" alanını yalnızca rakamlardan (baştaki "+" olmadan) bekler.
+  // message.to bu noktada sendVoucherWhatsApp tarafından zaten "+<digits>" formuna
+  // normalize edilmiş olarak gelir.
+  const metaPhone = message.to.replace(/^\+/, "");
+
   const response = await fetch(
     `https://graph.facebook.com/v19.0/${config.phoneNumberId}/messages`,
     {
@@ -67,7 +121,7 @@ async function sendMetaWhatsApp(message: WhatsAppMessage): Promise<WhatsAppSendR
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to: message.to,
+        to: metaPhone,
         type: "text",
         text: {
           preview_url: true,
@@ -107,9 +161,11 @@ async function sendTwilioWhatsApp(message: WhatsAppMessage): Promise<WhatsAppSen
   const url = new URL(
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(config.accountSid)}/Messages.json`,
   );
+  // Twilio'nun WhatsApp kanalı hem From hem To alanında "whatsapp:" öneki bekler;
+  // önek zaten varsa ikinci kez eklenmez.
   const body = new URLSearchParams({
-    From: config.from,
-    To: message.to,
+    From: ensureWhatsAppPrefix(config.from),
+    To: ensureWhatsAppPrefix(message.to),
     Body: message.body,
   });
 
@@ -139,15 +195,20 @@ async function sendTwilioWhatsApp(message: WhatsAppMessage): Promise<WhatsAppSen
 export async function sendVoucherWhatsApp(
   message: WhatsAppMessage,
 ): Promise<WhatsAppSendResult> {
-  const recipient = normalizeText(message.to);
   const body = normalizeText(message.body);
 
-  if (!recipient || !body) {
-    throw new Error("WhatsApp gönderimi için zorunlu alanlar eksik.");
+  if (!body) {
+    throw new Error("WhatsApp gönderimi için mesaj gövdesi gerekli.");
   }
 
+  // normalizeWhatsAppPhone burada, try/catch bloklarının DIŞINDA çağrılıyor: geçersiz
+  // telefon hatası (InvalidWhatsAppPhoneError) provider hataları gibi yutulmaz, olduğu
+  // gibi çağırana ulaşır.
+  const normalizedPhone = normalizeWhatsAppPhone(message.to);
+  const normalizedMessage: WhatsAppMessage = { ...message, to: normalizedPhone, body };
+
   try {
-    const metaResult = await sendMetaWhatsApp(message);
+    const metaResult = await sendMetaWhatsApp(normalizedMessage);
     if (metaResult.provider !== "placeholder") {
       return metaResult;
     }
@@ -158,7 +219,7 @@ export async function sendVoucherWhatsApp(
   }
 
   try {
-    const twilioResult = await sendTwilioWhatsApp(message);
+    const twilioResult = await sendTwilioWhatsApp(normalizedMessage);
     if (twilioResult.provider !== "placeholder") {
       return twilioResult;
     }

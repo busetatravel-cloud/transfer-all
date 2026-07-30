@@ -35,6 +35,7 @@ const demoStates = new Map<string, DemoState>([
           businessId: "business-demo-1",
           customerName: "Demo User",
           passengerName: "Demo User",
+          phone: "+90 555 999 88 77",
           origin: "Airport",
           destination: "Hotel",
           travelDate: "2026-06-10",
@@ -51,6 +52,13 @@ const demoStates = new Map<string, DemoState>([
           bookingStatus: "Onaylandı",
           currency: "TRY",
           totalAmount: 1200,
+          adultCount: 2,
+          childCount: 1,
+          babyCount: 0,
+          hotelNameOrAddress: "Demo Hotel",
+          collectedAmount: 300,
+          operationNotes: "Demo operasyon notu.",
+          notes: "Demo müşteri notu.",
           createdAt: "2026-06-10T10:00:00.000Z",
         },
       ],
@@ -200,6 +208,7 @@ function mapReservation(row: Record<string, unknown>): OperationReservationRecor
     businessId: String(row.business_id ?? ""),
     customerName: String(row.customer_name ?? ""),
     passengerName: (row.passenger_name as string | null) ?? null,
+    phone: (row.phone as string | null) ?? null,
     origin: (row.from_location as string | null) ?? null,
     destination: (row.to_location as string | null) ?? null,
     travelDate: (row.travel_date as string | null) ?? null,
@@ -219,6 +228,16 @@ function mapReservation(row: Record<string, unknown>): OperationReservationRecor
       row.total_amount === null || row.total_amount === undefined
         ? null
         : Number(row.total_amount),
+    adultCount: Number(row.adult_count ?? 0),
+    childCount: Number(row.child_count ?? 0),
+    babyCount: Number(row.baby_count ?? 0),
+    hotelNameOrAddress: (row.hotel_name_or_address as string | null) ?? null,
+    collectedAmount:
+      row.collected_amount === null || row.collected_amount === undefined
+        ? null
+        : Number(row.collected_amount),
+    operationNotes: (row.operation_notes as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
     createdAt: String(row.created_at ?? ""),
   };
 }
@@ -299,7 +318,7 @@ export async function listOperationReservations(businessId?: string) {
   if (hasSupabaseConnection()) {
     if (businessId) {
       const rows = await readRows(
-        `/requests?select=id,business_id,customer_name,passenger_name,from_location,to_location,travel_date,travel_time,flight_code,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_time,meeting_point,operation_status,payment_status,booking_status,currency,total_amount,created_at&business_id=eq.${encodeURIComponent(
+        `/requests?select=id,business_id,customer_name,passenger_name,phone,from_location,to_location,travel_date,travel_time,flight_code,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_time,meeting_point,operation_status,payment_status,booking_status,currency,total_amount,adult_count,child_count,baby_count,hotel_name_or_address,collected_amount,operation_notes,notes,created_at&business_id=eq.${encodeURIComponent(
           businessId,
         )}&order=created_at.desc`,
       );
@@ -310,7 +329,7 @@ export async function listOperationReservations(businessId?: string) {
     const rows = await Promise.all(
       toStateMap(businesses).map(async (id) =>
         readRows(
-          `/requests?select=id,business_id,customer_name,passenger_name,from_location,to_location,travel_date,travel_time,flight_code,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_time,meeting_point,operation_status,payment_status,booking_status,currency,total_amount,created_at&business_id=eq.${encodeURIComponent(
+          `/requests?select=id,business_id,customer_name,passenger_name,phone,from_location,to_location,travel_date,travel_time,flight_code,vehicle_category,vehicle_name,assigned_vehicle,driver_name,pickup_time,meeting_point,operation_status,payment_status,booking_status,currency,total_amount,adult_count,child_count,baby_count,hotel_name_or_address,collected_amount,operation_notes,notes,created_at&business_id=eq.${encodeURIComponent(
             id,
           )}&order=created_at.desc`,
         ),

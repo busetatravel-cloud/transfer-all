@@ -64,6 +64,7 @@ export type OperationReservationRecord = {
   businessId: string;
   customerName: string;
   passengerName: string | null;
+  phone: string | null;
   origin: string | null;
   destination: string | null;
   travelDate: string | null;
@@ -80,6 +81,13 @@ export type OperationReservationRecord = {
   bookingStatus: string;
   currency: string | null;
   totalAmount: number | null;
+  adultCount: number;
+  childCount: number;
+  babyCount: number;
+  hotelNameOrAddress: string | null;
+  collectedAmount: number | null;
+  operationNotes: string | null;
+  notes: string | null;
   createdAt: string;
 };
 

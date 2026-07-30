@@ -9,6 +9,7 @@ import type {
   ReservationAssignmentRecord,
   VehicleRecord,
 } from "@/lib/operation-types";
+import { DriverWhatsAppModal } from "@/components/driver-whatsapp-modal";
 
 type Props = {
   scope: "business" | "super-admin";
@@ -133,6 +134,20 @@ export function OperationsModule({ scope, businessName, initialData }: Props) {
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, AssignmentDraft>>(
     buildAssignmentDrafts(initialData),
   );
+  const [whatsappTarget, setWhatsappTarget] = useState<{
+    reservation: OperationReservationRecord;
+    driver: DriverRecord;
+  } | null>(null);
+
+  function findAssignedDriver(reservationId: string) {
+    const assignment = data.assignments.find((item) => item.reservationId === reservationId);
+
+    if (!assignment?.driverId) {
+      return null;
+    }
+
+    return data.drivers.find((item) => item.id === assignment.driverId) ?? null;
+  }
 
   useEffect(() => {
     setData(initialData);
@@ -657,6 +672,20 @@ export function OperationsModule({ scope, businessName, initialData }: Props) {
                             >
                               Set {column.status}
                             </button>
+                            <button
+                              className="inline-flex h-9 items-center justify-center rounded-xl border border-emerald-600 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              type="button"
+                              disabled={!findAssignedDriver(reservation.id)?.phone?.trim()}
+                              onClick={() => {
+                                const driver = findAssignedDriver(reservation.id);
+
+                                if (driver) {
+                                  setWhatsappTarget({ reservation, driver });
+                                }
+                              }}
+                            >
+                              Şoföre WhatsApp Gönder
+                            </button>
                           </div>
                         </div>
                       ) : null}
@@ -988,6 +1017,15 @@ export function OperationsModule({ scope, businessName, initialData }: Props) {
           </div>
         ) : null}
       </section>
+
+      {whatsappTarget ? (
+        <DriverWhatsAppModal
+          reservation={whatsappTarget.reservation}
+          driverName={whatsappTarget.driver.name}
+          driverPhone={whatsappTarget.driver.phone}
+          onClose={() => setWhatsappTarget(null)}
+        />
+      ) : null}
     </section>
   );
 }
