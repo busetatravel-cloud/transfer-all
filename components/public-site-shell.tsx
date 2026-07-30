@@ -6,6 +6,8 @@ import type { BusinessRecord } from "@/lib/business";
 import { MEDIA_PLACEHOLDER_SRC } from "@/lib/media";
 import { joinPublicPath } from "@/lib/public-path";
 import { PublicAnalyticsTracker } from "@/components/public-analytics-tracker";
+import { ThemeStyleProvider } from "@/components/theme/theme-style-provider";
+import { getBusinessThemeSettings } from "@/lib/theme-settings";
 import {
   SUPPORTED_LANGUAGES,
   isRTLLanguage,
@@ -24,7 +26,7 @@ const baseNavItems = [
   { href: "/booking", key: "booking" },
 ] as const;
 
-export function PublicSiteShell({
+export async function PublicSiteShell({
   business,
   children,
   basePath = "",
@@ -43,6 +45,7 @@ export function PublicSiteShell({
   currentPath?: string;
   copy?: PublicCopy;
 }) {
+  const themeSettings = await getBusinessThemeSettings(business.id);
   const buildHref = (href: string) => joinPublicPath(basePath, href);
   const currentRoute = currentPath.startsWith("/") ? currentPath : `/${currentPath}`;
   const currentUrl = buildHref(currentRoute);
@@ -62,7 +65,8 @@ export function PublicSiteShell({
   const navCopy = copy?.menus;
 
   return (
-    <div
+    <ThemeStyleProvider
+      settings={themeSettings}
       dir={rtl ? "rtl" : "ltr"}
       lang={locale}
       className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_40%,#f1f5f9_100%)] text-slate-950"
@@ -70,9 +74,9 @@ export function PublicSiteShell({
       {trackAnalytics ? (
         <PublicAnalyticsTracker businessId={business.id} enabled />
       ) : null}
-      <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+      <header className="ps-header sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <Link href={localizedHref("/")} className="text-lg font-semibold tracking-tight">
+          <Link href={localizedHref("/")} className="ps-brand text-lg font-semibold tracking-tight">
             {business.name}
           </Link>
           <div className="flex flex-wrap items-center gap-3">
@@ -81,7 +85,7 @@ export function PublicSiteShell({
                 <Link
                   key={item.href}
                   href={localizedHref(item.href)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:text-slate-950"
+                  className="ps-nav-link rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:text-slate-950"
                 >
                   {navCopy?.[item.key] ?? item.key}
                 </Link>
@@ -115,13 +119,13 @@ export function PublicSiteShell({
 
       <main className="mx-auto max-w-6xl px-4 py-10">{children}</main>
 
-      <footer className="border-t border-slate-200 bg-white">
+      <footer className="ps-footer border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between">
           <p>{business.domain ?? "Custom domain"}</p>
           <p>{business.email}</p>
         </div>
       </footer>
-    </div>
+    </ThemeStyleProvider>
   );
 }
 
@@ -144,9 +148,9 @@ export function PanelSection({
         </p>
       ) : null}
       <div className="grid gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
+        <h1 className="ps-heading text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
         {description ? (
-          <p className="max-w-3xl text-sm leading-7 text-slate-600">{description}</p>
+          <p className="ps-subtext max-w-3xl text-sm leading-7 text-slate-600">{description}</p>
         ) : null}
       </div>
       {children}
@@ -172,7 +176,7 @@ export function ContentCard({
   imageAlt?: string;
 }) {
   const card = (
-    <article className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300">
+    <article className="ps-card overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300">
       <div className="aspect-[16/10] overflow-hidden bg-slate-100">
         <img
           alt={imageAlt || title}
@@ -181,9 +185,9 @@ export function ContentCard({
           src={imageSrc?.trim() || MEDIA_PLACEHOLDER_SRC}
         />
       </div>
-      <div className="grid gap-3 p-5">
-        <h2 className="text-xl font-semibold tracking-tight text-slate-950">{title}</h2>
-        <p className="text-sm leading-7 text-slate-600">{description}</p>
+      <div className="ps-card-body grid gap-3 p-5">
+        <h2 className="ps-card-title text-xl font-semibold tracking-tight text-slate-950">{title}</h2>
+        <p className="ps-card-text text-sm leading-7 text-slate-600">{description}</p>
       </div>
     </article>
   );
@@ -209,7 +213,7 @@ export function MediaFrame({
   const source = imageSrc?.trim() || MEDIA_PLACEHOLDER_SRC;
 
   return (
-    <div className={`overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 ${className}`}>
+    <div className={`ps-media-frame overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 ${className}`}>
       <div className="aspect-[4/3] w-full">
         <img alt={imageAlt} className="h-full w-full object-cover" loading="lazy" src={source} />
       </div>
@@ -230,7 +234,7 @@ export function EmptyState({
   description: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">
+    <div className="ps-empty-state rounded-[24px] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">
       <div className="font-semibold text-slate-900">{title}</div>
       <p className="mt-2 leading-7">{description}</p>
     </div>

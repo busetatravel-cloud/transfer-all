@@ -99,6 +99,11 @@ export const businessAdminNav: PanelNavItem[] = [
     description: "Meta alanları",
   },
   {
+    href: "/app/theme",
+    label: "Tema",
+    description: "Public site görünümü ve tema seçimi",
+  },
+  {
     href: "/app/languages",
     label: "Languages",
     description: "Dil içerikleri",

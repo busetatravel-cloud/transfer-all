@@ -106,12 +106,12 @@ export default async function HomePage({
       copy={site.copy}
     >
       <section className="grid gap-8">
-        <div className="grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">
+        <div className="ps-hero grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">
           <div className="grid content-start gap-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               {business.domain ?? "Custom domain"}
             </p>
-            <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-slate-950 lg:text-6xl">
+            <h1 className="ps-hero-title max-w-2xl text-4xl font-semibold tracking-tight text-slate-950 lg:text-6xl">
               {site.panel.profile.heroTitle || business.name}
             </h1>
             <p className="max-w-2xl text-base leading-8 text-slate-600">
@@ -120,13 +120,13 @@ export default async function HomePage({
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Link
-                className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="ps-cta-primary inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
                 href={withLocale("/quote")}
               >
                 {site.panel.profile.heroButtonText || "Teklif al"}
               </Link>
               <Link
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                className="ps-cta-secondary inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
                 href={withLocale("/contact")}
               >
                 {site.copy.menus.contact}
