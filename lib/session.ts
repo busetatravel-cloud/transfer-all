@@ -12,7 +12,17 @@ export type SessionPayload = {
 export const SESSION_COOKIE_NAME = "transfer_saas_session";
 
 export function getSessionSecret() {
-  return process.env.SESSION_SECRET ?? "dev-session-secret-change-me";
+  const secret = process.env.SESSION_SECRET;
+
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is not set in production");
+  }
+
+  return "dev-session-secret-change-me";
 }
 
 function encodeBase64Url(value: string) {
