@@ -1,0 +1,17 @@
+-- public.users tablosu, projenin varsayılan (Supabase bootstrap) schema-level
+-- default ACL'i nedeniyle anon ve authenticated rollerine tam SELECT/INSERT/
+-- UPDATE/DELETE yetkisi veriyordu ve hiçbir RLS policy'si yoktu — bu nedenle
+-- herkese açık anon key ile doğrudan PostgREST üzerinden tüm kullanıcı
+-- satırlarına (password_hash/password_plaintext dahil) erişilebiliyordu.
+--
+-- Uygulama bu tabloya HER ZAMAN service_role ile erişiyor (server-side login,
+-- admin panel, super-admin şifre görüntüleme dahil) — service_role zaten
+-- rolbypassrls=true olduğu için bu revoke'tan etkilenmez. anon/authenticated
+-- rollerinin bu tabloya doğrudan (PostgREST üzerinden) hiçbir zaman erişmesi
+-- gerekmiyor, bu yüzden en düşük riskli çözüm RLS policy tasarlamak değil,
+-- bu iki role ait tüm tablo yetkisini kaldırmaktır.
+--
+-- Idempotent: REVOKE, verilmemiş bir yetkiyi kaldırmaya çalışırken hata
+-- vermez. Hiçbir satır/kolon değiştirilmiyor, hiçbir veri silinmiyor,
+-- password_plaintext davranışı (SUPER_ADMIN görünürlüğü) etkilenmiyor.
+revoke all on table public.users from anon, authenticated;
