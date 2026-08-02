@@ -161,7 +161,7 @@ function mapRevision(row: Record<string, unknown>): BusinessPublicationRevisionR
 
 function mapBusiness(row: Record<string, unknown>): BusinessRecord {
   return {
-    id: String(row.id ?? ""),
+    id: String(row.business_id ?? ""),
     name: String(row.name ?? ""),
     email: String(row.email ?? ""),
     phone: (row.phone as string | null) ?? null,
