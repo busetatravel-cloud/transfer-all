@@ -104,6 +104,11 @@ export const businessAdminNav: PanelNavItem[] = [
     description: "Public site görünümü ve tema seçimi",
   },
   {
+    href: "/app/website-builder",
+    label: "Website Builder",
+    description: "Sayfa ve section düzenleme (önizleme aşaması)",
+  },
+  {
     href: "/app/languages",
     label: "Languages",
     description: "Dil içerikleri",

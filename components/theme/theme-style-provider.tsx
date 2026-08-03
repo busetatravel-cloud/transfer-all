@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { ThemeSettings } from "@/lib/theme-types";
-import { buildThemeCssVariables } from "@/lib/theme-tokens";
+import { buildDesignSystemCssVariables, buildThemeCssVariables } from "@/lib/theme-tokens";
 
 type Props = {
   settings: ThemeSettings;
@@ -14,6 +14,7 @@ type Props = {
 // bileşeni hiç kullanmaz ve app/globals.css'teki global değişkenlerden etkilenmez.
 export function ThemeStyleProvider({ settings, dir = "ltr", lang, className = "", children }: Props) {
   const style = {
+    ...buildDesignSystemCssVariables(),
     ...buildThemeCssVariables(settings),
     fontFamily: "var(--ps-font)",
   } as CSSProperties;
