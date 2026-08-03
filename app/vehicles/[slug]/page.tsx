@@ -81,7 +81,7 @@ export default async function VehicleDetailPage({
             imageAlt={resolveBusinessMediaAltText(
               site.panel.mediaAssets,
               "vehicle_cover",
-              `${vehicle.title} kapak gÃ¶rseli`,
+              `${vehicle.title} kapak görseli`,
             )}
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "vehicle_cover")}
             label="Kapak"
@@ -90,19 +90,19 @@ export default async function VehicleDetailPage({
             imageAlt={resolveBusinessMediaAltText(
               site.panel.mediaAssets,
               "vehicle_interior",
-              `${vehicle.title} iÃ§ gÃ¶rÃ¼nÃ¼m`,
+              `${vehicle.title} iç görünüm`,
             )}
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "vehicle_interior")}
-            label="Ä°Ã§ gÃ¶rÃ¼nÃ¼m"
+            label="İç görünüm"
           />
           <MediaFrame
             imageAlt={resolveBusinessMediaAltText(
               site.panel.mediaAssets,
               "vehicle_exterior",
-              `${vehicle.title} dÄ±ÅŸ gÃ¶rÃ¼nÃ¼m`,
+              `${vehicle.title} dış görünüm`,
             )}
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "vehicle_exterior")}
-            label="DÄ±ÅŸ gÃ¶rÃ¼nÃ¼m"
+            label="Dış görünüm"
           />
           <MediaFrame
             imageAlt={resolveBusinessMediaAltText(

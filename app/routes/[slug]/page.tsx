@@ -81,10 +81,10 @@ export default async function RouteDetailPage({
             imageAlt={resolveBusinessMediaAltText(
               site.panel.mediaAssets,
               "route_cover",
-              `${route.title} kapak gÃ¶rseli`,
+              `${route.title} kapak görseli`,
             )}
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "route_cover")}
-            label="Rota kapak gÃ¶rseli"
+            label="Rota kapak görseli"
           />
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm leading-7 text-slate-600 shadow-sm">
             Bu rota yalnizca {site.panel.business.name} icerigiyle sinirlidir.

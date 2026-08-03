@@ -139,10 +139,10 @@ export default async function HomePage({
               imageAlt={resolveBusinessMediaAltText(
                 site.panel.mediaAssets,
                 "hero",
-                `${business.name} kapak gÃ¶rseli`,
+                `${business.name} kapak görseli`,
               )}
               imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "hero")}
-              label="Ana gÃ¶rsel"
+              label="Ana görsel"
             />
             <InfoRow label="Business email" value={business.email} />
             <InfoRow label="Telefon" value={business.phone ?? "-"} />

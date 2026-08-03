@@ -81,10 +81,10 @@ export default async function ServiceDetailPage({
             imageAlt={resolveBusinessMediaAltText(
               site.panel.mediaAssets,
               "service_cover",
-              `${service.title} kapak gÃ¶rseli`,
+              `${service.title} kapak görseli`,
             )}
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "service_cover")}
-            label="Hizmet kapak gÃ¶rseli"
+            label="Hizmet kapak görseli"
           />
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm leading-7 text-slate-600 shadow-sm">
             Bu icerik sadece {site.panel.business.name} business kaydina aittir.

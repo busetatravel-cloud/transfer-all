@@ -1,0 +1,18 @@
+{
+  "_comment": "Bu dosyalardaki eşleşmeler BİLİNÇLİ ve GEREKLİDİR, düzeltilmemelidir. Her satır için gerekçe: bkz. açıklamalar.",
+  "files": [
+    "scripts/text-encoding-check.mjs",
+    "lib/request-statuses.ts",
+    "supabase/migrations/0010_stage6_finance.sql",
+    "supabase/migrations/0014_stage6_reservations_cleanup.sql",
+    "supabase/migrations/0017_stage6_reservations_schema_fix.sql",
+    "supabase/migrations/0018_stage6_requests_reservation_columns.sql",
+    "supabase/migrations/0019_stage6_requests_final_reservation_schema.sql",
+    "supabase/migrations/0025_stage6_subscription_plans.sql"
+  ],
+  "_reasons": {
+    "scripts/text-encoding-check.mjs": "Bu dosyanın kendisi — pattern isimleri ve yorumları, tespit ettiği mojibake kalıplarını insan-okunur şekilde açıklamak için örnek karakterler içerir (öz-referans, gerçek bir hata değil).",
+    "lib/request-statuses.ts": "Map anahtarları, geçmişte veritabanına yazılmış olabilecek bozuk booking/payment status değerlerini normalize etmek için KASITLI olarak mojibake içerir. Düzeltilirse eski/bozuk verilerin doğru etikete eşlenmesi bozulur.",
+    "supabase/migrations/*.sql": "Zaten uygulanmış (veya kısmen uygulanmış) tarihsel migration dosyaları. Migration geçmişini bozmamak için içerikleri değiştirilmez; canlı varsayılan değer (payment_status default) ayrıca doğrulanıp düzeltilmiş durumda bulunmuştur."
+  }
+}

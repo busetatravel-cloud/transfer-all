@@ -81,10 +81,10 @@ export default async function BlogDetailPage({
             imageAlt={resolveBusinessMediaAltText(
               site.panel.mediaAssets,
               "blog_cover",
-              `${post.title} kapak gÃ¶rseli`,
+              `${post.title} kapak görseli`,
             )}
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "blog_cover")}
-            label="Blog kapak gÃ¶rseli"
+            label="Blog kapak görseli"
           />
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm leading-7 text-slate-600 shadow-sm">
             <p>{post.content || post.excerpt || "Icerik hazirlaniyor."}</p>
