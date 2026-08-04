@@ -97,7 +97,10 @@ function HeroView({ section }: BlockRendererProps<HeroContent, HeroStyle>) {
   return (
     <BuilderContainer>
       <div
-        className={`flex flex-col gap-4 ${alignClass}`}
+        // ps-hero: [data-ps-theme="luxury"] altinda tanimli surface/border/
+        // radius/shadow/padding kurallarini devreye sokar (bkz. app/globals.css).
+        // Modern temada bu class icin hicbir CSS kurali yok, gorunum degismez.
+        className={`ps-hero flex flex-col gap-4 ${alignClass}`}
         style={{ paddingBlock: "var(--ps-space-3xl)", gap: "var(--ps-space-md)" }}
       >
         {content.eyebrow ? (
@@ -105,7 +108,7 @@ function HeroView({ section }: BlockRendererProps<HeroContent, HeroStyle>) {
             {content.eyebrow}
           </BuilderText>
         ) : null}
-        <BuilderHeading level="h1" size="5xl" className="text-[var(--ps-text)]">
+        <BuilderHeading level="h1" size="5xl" className="ps-hero-title text-[var(--ps-text)]">
           {content.title}
         </BuilderHeading>
         {content.subtitle ? (

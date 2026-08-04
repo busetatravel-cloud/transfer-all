@@ -61,6 +61,7 @@ export type BuilderDocumentAction =
   | WorkspaceAction
   | { type: "hydrate-draft"; payload: BuilderDraftPersistenceRecord }
   | { type: "mark-draft-saved"; savedAt?: string; version?: number }
+  | { type: "mark-draft-published"; publishedVersion: number; publishedAt: string }
   | { type: "discard-draft" }
   | { type: "reset-draft-to-published" };
 
@@ -123,6 +124,15 @@ export function hydrateBuilderDocumentState(
         tone: "info",
         text: "Sunucudaki kayitli draft geri yuklendi.",
       },
+    // payload.version.published, draft satirinin gercek base_published_version'idir
+    // (draft-store.ts, mapDraftRow icinde bunu doldurur). Onceden burasi
+    // state.published.version'i (hic guncellenmeyen, hep 1 kalan bir client-only
+    // deger) kullaniyordu — bu yuzden "Yayında vX" rozeti asla dogru degeri
+    // gostermiyordu. Artik published.version de bu gercek deger ile senkronlanir.
+    published: {
+      ...state.published,
+      version: payload.version.published,
+    },
     draft: {
       ...state.draft,
       workspace,
@@ -133,7 +143,7 @@ export function hydrateBuilderDocumentState(
       },
       version: {
         draft: payload.version.draft,
-        published: state.published.version,
+        published: payload.version.published,
         saved: payload.version.saved,
       },
       dirty: false,
@@ -181,6 +191,31 @@ export function builderDocumentReducer(
           queued: false,
           lastScheduledAt: null,
           lastAttemptAt: action.savedAt ?? state.draft.autosave.lastAttemptAt,
+        },
+      },
+    };
+  }
+
+  if (action.type === "mark-draft-published") {
+    return {
+      ...state,
+      notice: {
+        tone: "info",
+        text: "Website yayınlandı.",
+      },
+      published: {
+        ...state.published,
+        version: action.publishedVersion,
+        publishedAt: action.publishedAt,
+      },
+      draft: {
+        ...state.draft,
+        // Publish, draft'in KENDI icerigini degistirmez — yalnizca "bu
+        // draft'in hangi published surumden turedigi" bilgisini gunceller.
+        // draft.version.draft / dirty / checkpoint bilerek DOKUNULMAZ.
+        version: {
+          ...state.draft.version,
+          published: action.publishedVersion,
         },
       },
     };
@@ -295,6 +330,10 @@ export function getPublishedVersionLabel(state: BuilderDocumentState): string {
 
 export function getSavedVersionLabel(state: BuilderDocumentState): string {
   return `v${state.draft.version.saved}`;
+}
+
+export function hasUnpublishedBuilderChanges(state: BuilderDocumentState): boolean {
+  return state.draft.dirty || state.draft.version.saved !== state.draft.version.published;
 }
 
 export function getUnsavedChangesNotice(state: BuilderDocumentState): string | null {
@@ -421,7 +460,15 @@ function isVersionState(value: unknown): value is BuilderVersionState {
 }
 
 function isMutatingAction(action: BuilderDocumentAction): boolean {
-  return "type" in action && action.type !== "reset-draft-to-published" && action.type !== "hydrate-draft" && action.type !== "mark-draft-saved" && action.type !== "discard-draft" && MUTATING_WORKSPACE_ACTIONS.has(action.type);
+  return (
+    "type" in action &&
+    action.type !== "reset-draft-to-published" &&
+    action.type !== "hydrate-draft" &&
+    action.type !== "mark-draft-saved" &&
+    action.type !== "mark-draft-published" &&
+    action.type !== "discard-draft" &&
+    MUTATING_WORKSPACE_ACTIONS.has(action.type)
+  );
 }
 
 function isWorkspaceDirty(nextWorkspace: WorkspaceState, checkpoint: WorkspaceSnapshot): boolean {

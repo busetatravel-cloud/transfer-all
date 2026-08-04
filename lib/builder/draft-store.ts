@@ -639,6 +639,34 @@ export async function getBusinessBuilderDraft(businessId: string) {
   return createBusinessBuilderDraft(businessId);
 }
 
+export type BuilderDraftLookupResult =
+  | { status: "ok"; record: BuilderDraftServerRecord }
+  | { status: "not_found" }
+  | { status: "malformed" };
+
+// Publish akisi icin: getBusinessBuilderDraft()'in aksine burasi HICBIR ZAMAN
+// otomatik seed veya repair yapmaz. Publish, olmayan bir taslagi sessizce
+// olusturup onu yayinlamamali; bozuk bir taslagi onarip yayinlamamali — her
+// iki durum da publish-store tarafindan acikca reddedilmeli (422).
+export async function readBusinessBuilderDraftForPublish(businessId: string): Promise<BuilderDraftLookupResult> {
+  const trimmed = businessId.trim();
+  if (!trimmed) {
+    return { status: "not_found" };
+  }
+
+  const existing = await readDraftRow(trimmed);
+  if (!existing) {
+    return { status: "not_found" };
+  }
+
+  const mapped = mapDraftRow(existing);
+  if (!mapped) {
+    return { status: "malformed" };
+  }
+
+  return { status: "ok", record: mapped };
+}
+
 async function repairBusinessBuilderDraft(
   businessId: string,
   rowId: string,

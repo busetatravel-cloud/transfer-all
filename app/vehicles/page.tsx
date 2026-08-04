@@ -10,6 +10,9 @@ import {
 import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import { resolveBusinessMediaSourceUrl } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
+import { resolveBuilderSeoHints, resolvePublishedBuilderPage } from "@/lib/builder/public-render";
+import { PublicBuilderPageContent } from "@/components/builder/public-page-renderer";
+import "@/lib/builder/blocks/index";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,13 +29,16 @@ export async function generateMetadata({
     return { title: "Araclar", description: "Arac listesi." };
   }
 
+  const builderPage = await resolvePublishedBuilderPage(site.panel.business.id, "vehicles");
+  const builderSeo = resolveBuilderSeoHints(builderPage, site.panel.business.name);
+
   return buildBusinessSeoMetadata({
     business: site.panel.business,
     seo: site.panel.seo,
     locales: site.panel.locales,
     pathname: "/vehicles",
-    title: `${site.panel.business.name} | Araclar`,
-    description: site.panel.seo.metaDescription || "Business arac listesi",
+    title: builderSeo.title || `${site.panel.business.name} | Araclar`,
+    description: builderSeo.description || site.panel.seo.metaDescription || "Business arac listesi",
   });
 }
 
@@ -49,6 +55,7 @@ export default async function VehiclesPage({
   }
 
   const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
+  const builderPage = await resolvePublishedBuilderPage(site.panel.business.id, "vehicles");
 
   return (
     <PublicSiteShell
@@ -58,6 +65,9 @@ export default async function VehiclesPage({
       currentPath="/vehicles"
       copy={site.copy}
     >
+      {builderPage ? (
+        <PublicBuilderPageContent page={builderPage} panel={site.panel} locale={site.locale} />
+      ) : (
       <PanelSection
         eyebrow="Araclar"
         title="Business arac listesi"
@@ -83,6 +93,7 @@ export default async function VehiclesPage({
           />
         )}
       </PanelSection>
+      )}
     </PublicSiteShell>
   );
 }

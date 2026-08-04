@@ -20,6 +20,9 @@ import {
   resolveBusinessMediaSourceUrl,
 } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
+import { resolveBuilderSeoHints, resolvePublishedBuilderPage } from "@/lib/builder/public-render";
+import { PublicBuilderPageContent } from "@/components/builder/public-page-renderer";
+import "@/lib/builder/blocks/index";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,13 +42,20 @@ export async function generateMetadata({
     };
   }
 
+  // Fallback zinciri: 1) yayınlanmış builder sayfasının SEO hint'i,
+  // 2) mevcut business SEO ayarları, 3) business adı / legacy hero metni.
+  // Builder yayını yoksa (builderPage=null) builderSeo.title/description da
+  // null döner ve metadata çıktısı birebir eski davranışta kalır.
+  const builderPage = await resolvePublishedBuilderPage(site.panel.business.id, "home");
+  const builderSeo = resolveBuilderSeoHints(builderPage, site.panel.business.name);
+
   return buildBusinessSeoMetadata({
     business: site.panel.business,
     seo: site.panel.seo,
     locales: site.panel.locales,
     pathname: "/",
-    title: site.panel.seo.metaTitle || site.panel.business.name,
-    description: site.panel.seo.metaDescription || site.panel.profile.heroSubtitle || "",
+    title: builderSeo.title || site.panel.seo.metaTitle || site.panel.business.name,
+    description: builderSeo.description || site.panel.seo.metaDescription || site.panel.profile.heroSubtitle || "",
   });
 }
 
@@ -97,6 +107,14 @@ export default async function HomePage({
   const business = site.panel.business;
   const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
 
+  // Faz 11: bu business Website Builder'da bir "home" sayfasi yayinladiysa
+  // (published snapshot) gercek public site bu sayfayi (Hero/ServicesGrid/CTA)
+  // render eder. Henuz hic publish edilmemisse (ya da yayinlanan sayfa
+  // pasif/bos/bozuksa) resolvePublishedBuilderPage null doner ve asagidaki
+  // LEGACY hero+panel JSX'i AYNEN calismaya devam eder — mevcut public site
+  // davranisi hicbir tenant icin bozulmaz.
+  const builderHomePage = await resolvePublishedBuilderPage(business.id, "home");
+
   return (
     <PublicSiteShell
       business={business}
@@ -105,6 +123,9 @@ export default async function HomePage({
       currentPath="/"
       copy={site.copy}
     >
+      {builderHomePage ? (
+        <PublicBuilderPageContent page={builderHomePage} panel={site.panel} locale={site.locale} />
+      ) : (
       <section className="grid gap-8">
         <div className="ps-hero grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">
           <div className="grid content-start gap-4">
@@ -243,6 +264,7 @@ export default async function HomePage({
           )}
         </PanelSection>
       </section>
+      )}
     </PublicSiteShell>
   );
 }

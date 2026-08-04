@@ -117,11 +117,11 @@ function ServicesGridView({
             {content.eyebrow}
           </BuilderText>
         ) : null}
-        <BuilderHeading level="h2" size="3xl" className="text-[var(--ps-text)]">
+        <BuilderHeading level="h2" size="3xl" className="ps-heading text-[var(--ps-text)]">
           {content.title}
         </BuilderHeading>
         {content.description ? (
-          <BuilderText size="base" className="max-w-2xl text-[var(--ps-text)] opacity-80">
+          <BuilderText size="base" className="ps-subtext max-w-2xl text-[var(--ps-text)] opacity-80">
             {content.description}
           </BuilderText>
         ) : null}
@@ -130,12 +130,12 @@ function ServicesGridView({
           <div className={`grid gap-4 ${COLUMN_CLASS[style.columns] ?? COLUMN_CLASS[3]}`}>
             {items.map((item) => (
               <a key={item.id} href={item.href} className="block">
-                <BuilderCard>
+                <BuilderCard className="ps-card">
                   <div className="flex flex-col" style={{ gap: "var(--ps-space-sm)" }}>
-                    <BuilderHeading level="h3" size="xl">
+                    <BuilderHeading level="h3" size="xl" className="ps-card-title">
                       {item.title}
                     </BuilderHeading>
-                    <BuilderText size="sm" className="opacity-80">
+                    <BuilderText size="sm" className="ps-card-text opacity-80">
                       {item.description}
                     </BuilderText>
                   </div>

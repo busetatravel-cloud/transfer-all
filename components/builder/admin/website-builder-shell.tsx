@@ -10,6 +10,7 @@ import {
   getPublishedVersionLabel,
   getSavedVersionLabel,
   getUnsavedChangesNotice,
+  hasUnpublishedBuilderChanges,
   type BuilderDraftPersistenceRecord,
 } from "@/lib/builder/document-state";
 import { getBlockDefinition } from "@/lib/builder/registry";
@@ -52,8 +53,26 @@ type BuilderDraftApiResponse =
       issues?: Array<{ path: string; message: string }>;
     };
 
+type BuilderPublishApiResponse =
+  | {
+      ok: true;
+      revisionId: string;
+      publishedVersion: number;
+      draftVersion: number;
+      publishedAt: string;
+    }
+  | {
+      ok: false;
+      code?: string;
+      message?: string;
+      currentDraftVersion?: number;
+      currentPublishedVersion?: number;
+      issues?: Array<{ path: string; message: string }>;
+    };
+
 type DraftLoadState = "loading" | "ready" | "error";
 type DraftSaveState = "idle" | "saving" | "saved" | "error" | "conflict";
+type DraftPublishState = "idle" | "publishing" | "published" | "error" | "conflict";
 
 export function WebsiteBuilderShell() {
   const [documentState, dispatch] = useReducer(
@@ -66,7 +85,10 @@ export function WebsiteBuilderShell() {
   const [draftLoadError, setDraftLoadError] = useState<string | null>(null);
   const [draftSaveState, setDraftSaveState] = useState<DraftSaveState>("idle");
   const [draftSaveMessage, setDraftSaveMessage] = useState<string | null>(null);
+  const [publishState, setPublishState] = useState<DraftPublishState>("idle");
+  const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const isSavingRef = useRef(false);
+  const isPublishingRef = useRef(false);
 
   // dirty=true iken sekme kapatma/yenileme/navigasyon icin uyari goster.
   // dirty=false oldugu an (save basarili, discard, hydration) effect temizlenir
@@ -112,6 +134,10 @@ export function WebsiteBuilderShell() {
         setDraftLoadState("ready");
         setDraftSaveState("idle");
         setDraftSaveMessage(null);
+        // Taze bir draft yuklendiginde onceki publish conflict/error durumu
+        // artik gecerli degil (versiyonlar guncellendi) — sifirla.
+        setPublishState("idle");
+        setPublishMessage(null);
       } catch (error) {
         if (cancelled) {
           return;
@@ -327,9 +353,82 @@ export function WebsiteBuilderShell() {
       dispatch({ type: "hydrate-draft", payload: payload.draft.document });
       setDraftSaveState("idle");
       setDraftSaveMessage("Sunucudaki son draft geri yuklendi.");
+      setPublishState("idle");
+      setPublishMessage(null);
     } catch (error) {
       setDraftSaveState("error");
       setDraftSaveMessage(error instanceof Error ? error.message : "Draft geri yuklenemedi.");
+    }
+  }
+
+  async function handlePublish() {
+    // Ayni tick icinde cift tiklamayi senkron ref kilidiyle engelle (save
+    // butonundaki desenle ayni). Ayrica dirty/hazir-degil/conflict
+    // durumlarinda publish'in "kor" sekilde denenmesini engelle — buton zaten
+    // disabled olur ama fonksiyon da kendi basina guvenli olmali.
+    if (
+      isPublishingRef.current ||
+      documentState.draft.dirty ||
+      draftLoadState !== "ready" ||
+      draftSaveState === "saving" ||
+      publishState === "publishing" ||
+      publishState === "conflict"
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Kaydedilmiş taslak canlı site sürümüne dönüştürülecek. Devam edilsin mi?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    isPublishingRef.current = true;
+    setPublishState("publishing");
+    setPublishMessage(null);
+
+    try {
+      const response = await fetch("/api/business/site-builder/publish", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          expectedDraftVersion: documentState.draft.version.draft,
+          expectedPublishedVersion: documentState.draft.version.published,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as BuilderPublishApiResponse | null;
+
+      if (!response.ok || !payload || !payload.ok) {
+        if (response.status === 409) {
+          setPublishState("conflict");
+          setPublishMessage(
+            payload && !payload.ok && payload.message
+              ? payload.message
+              : "Yayın başka bir oturumda değişti.",
+          );
+          return;
+        }
+
+        throw new Error(payload && !payload.ok && payload.message ? payload.message : "Yayın işlemi başarısız.");
+      }
+
+      dispatch({
+        type: "mark-draft-published",
+        publishedVersion: payload.publishedVersion,
+        publishedAt: payload.publishedAt,
+      });
+      setPublishState("published");
+      setPublishMessage(`Website yayınlandı (v${payload.publishedVersion}).`);
+    } catch (error) {
+      setPublishState("error");
+      setPublishMessage(error instanceof Error ? error.message : "Yayın işlemi başarısız.");
+    } finally {
+      isPublishingRef.current = false;
     }
   }
 
@@ -545,6 +644,14 @@ export function WebsiteBuilderShell() {
                 {documentState.draft.dirty ? <Badge>Kaydedilmedi</Badge> : null}
                 {draftSaveState === "saving" ? <Badge>Kaydediliyor</Badge> : null}
                 {draftSaveState === "conflict" ? <Badge>Conflict</Badge> : null}
+                {publishState === "publishing" ? <Badge>Yayınlanıyor...</Badge> : null}
+                {publishState === "conflict" ? <Badge>Publish conflict</Badge> : null}
+                {publishState === "error" ? <Badge>Publish error</Badge> : null}
+                {publishState !== "publishing" && hasUnpublishedBuilderChanges(documentState) ? (
+                  <Badge>Yayınlanmamış değişiklik var</Badge>
+                ) : (
+                  <Badge>Yayında</Badge>
+                )}
               </div>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
                 {selectedPage.title}
@@ -586,6 +693,19 @@ export function WebsiteBuilderShell() {
               >
                 Vazgec
               </SegmentButton>
+              <SegmentButton
+                active={hasUnpublishedBuilderChanges(documentState)}
+                disabled={
+                  documentState.draft.dirty ||
+                  draftLoadState !== "ready" ||
+                  draftSaveState === "saving" ||
+                  publishState === "publishing" ||
+                  publishState === "conflict"
+                }
+                onClick={() => void handlePublish()}
+              >
+                {publishState === "publishing" ? "Yayınlanıyor..." : "Yayınla"}
+              </SegmentButton>
               <SegmentButton active={previewMode === "desktop"} onClick={() => setPreviewMode("desktop")}>
                 Desktop
               </SegmentButton>
@@ -620,6 +740,19 @@ export function WebsiteBuilderShell() {
               ].join(" ")}
             >
               {draftSaveMessage}
+            </div>
+          ) : null}
+
+          {publishMessage ? (
+            <div
+              className={[
+                "mt-4 rounded-2xl border px-4 py-3 text-sm",
+                publishState === "error" || publishState === "conflict"
+                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700",
+              ].join(" ")}
+            >
+              {publishMessage}
             </div>
           ) : null}
 

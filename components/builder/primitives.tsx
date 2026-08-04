@@ -83,21 +83,31 @@ export function BuilderButton({
   children,
   variant = "primary",
   size = "md",
+  className = "",
 }: {
   href: string;
   children: ReactNode;
   variant?: "primary" | "secondary";
   size?: ButtonSizeToken;
+  className?: string;
 }) {
   const toneClass =
     variant === "primary"
       ? "bg-[var(--ps-primary)] text-[var(--ps-background)] hover:opacity-90"
       : "border border-[var(--ps-secondary)] bg-transparent text-[var(--ps-text)] hover:bg-[var(--ps-surface)]";
+  // ps-cta-primary/ps-cta-secondary: mevcut public site CSS'indeki
+  // [data-ps-theme="luxury"] .ps-cta-* kurallarinin (altin vurgu, hover
+  // rengi) builder butonlarina da uygulanmasini saglayan kanca sinifi.
+  // Legacy hardcoded hero de AYNI iki class'i primary/secondary buton icin
+  // kullanir — burada birebir ayni esleme korunuyor. Modern temada bu
+  // class'lar icin hicbir CSS kurali tanimli degildir, bu yuzden Modern
+  // gorunumde sifir etkisi vardir.
+  const themeMarkerClass = variant === "primary" ? "ps-cta-primary" : "ps-cta-secondary";
 
   return (
     <a
       href={href}
-      className={`inline-flex items-center justify-center font-semibold transition ${toneClass}`}
+      className={`inline-flex items-center justify-center font-semibold transition ${toneClass} ${themeMarkerClass} ${className}`}
       style={{
         height: `var(--ps-button-height-${size})`,
         paddingLeft: `var(--ps-button-padding-x-${size})`,
