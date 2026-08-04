@@ -380,10 +380,11 @@ test(
       try {
         await publishHomeWithHeroTitle(businessId, "Yayinlanmis Gercek Baslik");
 
-        const page = await resolvePublishedBuilderPage(businessId, "home");
-        assert.ok(page, "an active published home page must resolve");
-        assert.equal(page.key, "home");
-        const hero = page.sections.find((s) => s.blockKey === "hero");
+        const resolved = await resolvePublishedBuilderPage(businessId, "home");
+        assert.ok(resolved, "an active published home page must resolve");
+        assert.ok(resolved.revisionId, "Faz 13: resolution must also return the revisionId (needed for translation lookup)");
+        assert.equal(resolved.page.key, "home");
+        const hero = resolved.page.sections.find((s) => s.blockKey === "hero");
         assert.equal(hero.content.title, "Yayinlanmis Gercek Baslik");
       } finally {
         await deleteTestBusiness(businessId);
@@ -506,8 +507,9 @@ test(
         });
 
         for (const pageKey of ["home", "services", "vehicles", "routes", "blog", "contact"]) {
-          const page = await resolvePublishedBuilderPage(businessId, pageKey);
-          assert.ok(page, `default seed must publish an active "${pageKey}" page`);
+          const resolved = await resolvePublishedBuilderPage(businessId, pageKey);
+          assert.ok(resolved, `default seed must publish an active "${pageKey}" page`);
+          const page = resolved.page;
 
           const serialized = JSON.stringify(page);
           for (const term of forbiddenTerms) {

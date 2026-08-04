@@ -117,5 +117,7 @@ export function buildTranslationSeeds(panel: TranslationPanelShape) {
       { section: "booking", sourceId: "empty", fieldKey: "noResultDescription", sourceText: DEFAULT_PUBLIC_COPY.booking.noResultDescription },
       { section: "booking", sourceId: "empty", fieldKey: "reservationLabel", sourceText: DEFAULT_PUBLIC_COPY.booking.reservationLabel },
     ],
+    // bkz. lib/content-translations.ts getSectionSeeds() — ayni gerekce.
+    builder: [],
   } satisfies Record<TranslationSection, SectionTranslationSeed[]>;
 }

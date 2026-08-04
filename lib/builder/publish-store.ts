@@ -7,6 +7,11 @@ import {
 import type { BuilderDraftPersistenceRecord } from "@/lib/builder/document-state";
 import { getSupabaseConfig, hasSupabaseConnection } from "@/lib/supabase-config";
 import type { BuilderValidationIssue } from "@/lib/builder/types";
+import { snapshotBuilderTranslationsForRevision } from "@/lib/builder/translations";
+import {
+  readBusinessPublishedTranslationsByRevision,
+  replacePublishedTranslationsForRevision,
+} from "@/lib/content-translations";
 
 // ============================================================
 // Website Builder Faz 10 — publish pipeline + published snapshot okuma
@@ -76,6 +81,7 @@ export type BuilderPublicationVersionSummary = {
   revisionId: string;
   status: string;
   source: string;
+  note: string;
   createdAt: string;
   createdBy: string | null;
   hasBuilderDocument: boolean;
@@ -251,12 +257,28 @@ export async function publishBuilderDraft({
     throw new BuilderPublishTransactionError("Yayın yanıtı okunamadı.");
   }
 
-  return {
+  const result: BuilderPublishResult = {
     revisionId: String(row.revision_id ?? ""),
     publishedVersion: Number(row.published_version ?? 0),
     draftVersion: Number(row.draft_version ?? 0),
     publishedAt: String(row.published_at ?? ""),
   };
+
+  // Faz 13 — o anki builder ceviri taslaklarini yeni revisionId'ye kopyala.
+  // Best-effort: revision/document RPC ile zaten atomik olarak guvenceye
+  // alindi; ceviri kopyalama basarisiz olsa bile publish BASARILI sayilir
+  // (public render eksik ceviride guvenle default locale'e duser).
+  try {
+    await snapshotBuilderTranslationsForRevision(safeBusinessId, result.revisionId);
+  } catch (error) {
+    console.warn("builder translation snapshot failed (best-effort)", {
+      businessId: safeBusinessId,
+      revisionId: result.revisionId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return result;
 }
 
 export async function rollbackBuilderPublication(
@@ -292,7 +314,12 @@ export async function rollbackBuilderPublication(
 
   if (!response.ok) {
     const body = parsePostgrestError(text);
-    if (body.message === "target_revision_not_found") {
+    if (body.message === "target_revision_not_found" || body.message === "draft_not_found") {
+      // draft_not_found: Faz 13 kilit duzeltmesiyle eklenen row-lock, artik
+      // once draft satirini ariyor (bkz. migration). Pratikte bu satir hep
+      // vardir (bir revizyonun var olmasi zaten en az bir publish'in daha
+      // once basarili oldugunu, dolayisiyla draft'in var oldugunu garanti
+      // eder) ama savunmaci olarak ayni "not found" sonucuna esleniyor.
       throw new BuilderRollbackNotFoundError();
     }
     throw new BuilderPublishTransactionError(body.message || "Geri alma işlemi başarısız.");
@@ -305,11 +332,31 @@ export async function rollbackBuilderPublication(
     throw new BuilderPublishTransactionError("Geri alma yanıtı okunamadı.");
   }
 
-  return {
+  const result = {
     revisionId: String(row.revision_id ?? ""),
     publishedVersion: Number(row.published_version ?? 0),
     publishedAt: String(row.published_at ?? ""),
   };
+
+  // Hedef revizyonun ceviri snapshot'ini da (varsa) yeni revizyona kopyala —
+  // dokuman icin uygulanan "eski satiri mutate etme, yeni revizyona kopyala"
+  // ilkesinin ceviriler icin de aynisi. Best-effort (ayni gerekce: rollback
+  // RPC'si zaten atomik olarak tamamlandi).
+  try {
+    const targetTranslations = await readBusinessPublishedTranslationsByRevision(safeBusinessId, safeTargetRevisionId);
+    if (targetTranslations.length) {
+      await replacePublishedTranslationsForRevision(safeBusinessId, result.revisionId, targetTranslations);
+    }
+  } catch (error) {
+    console.warn("builder rollback translation copy failed (best-effort)", {
+      businessId: safeBusinessId,
+      targetRevisionId: safeTargetRevisionId,
+      newRevisionId: result.revisionId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return result;
 }
 
 // ============================================================
@@ -330,6 +377,47 @@ function readDocumentFromRow(row: Record<string, unknown> | undefined): BuilderD
   } catch {
     return null;
   }
+}
+
+export type BuilderPublishedDocumentRow = {
+  document: BuilderDraftPersistenceRecord;
+  revisionId: string;
+};
+
+// getLatestPublishedBuilderDocument() (asagida) yalnizca document doner —
+// mevcut cagiranlar (Faz 11/12) bunu degistirmeden kullanmaya devam eder.
+// Faz 13'te public render'in cevirileri cozebilmesi icin revisionId'ye de
+// ihtiyaci var (business_publication_translations bu id ile sorgulanir),
+// bu yuzden AYRI bir fonksiyon eklendi — mevcut imzalari bozmadan.
+export async function getLatestPublishedBuilderDocumentRow(
+  businessId: string,
+): Promise<BuilderPublishedDocumentRow | null> {
+  const safeBusinessId = businessId.trim();
+
+  if (!safeBusinessId || !hasSupabaseConnection()) {
+    return null;
+  }
+
+  const response = await supabaseFetch(
+    `/business_publication_site_builder_documents?select=document,revision_id&business_id=eq.${encodeURIComponent(
+      safeBusinessId,
+    )}&order=document_version.desc&limit=1`,
+  );
+
+  if (!response?.ok) {
+    return null;
+  }
+
+  const rows = readRowsFromResponseText(await response.text().catch(() => ""));
+  const row = rows[0];
+  const document = readDocumentFromRow(row);
+  const revisionId = row ? String(row.revision_id ?? "") : "";
+
+  if (!document || !revisionId) {
+    return null;
+  }
+
+  return { document, revisionId };
 }
 
 export async function getPublishedBuilderDocument(
@@ -408,7 +496,7 @@ export async function listBuilderPublicationVersions(
   }
 
   const response = await supabaseFetch(
-    `/business_publication_site_builder_documents?select=revision_id,document_version,created_at,business_publication_revisions(status,source,created_at)&business_id=eq.${encodeURIComponent(
+    `/business_publication_site_builder_documents?select=revision_id,document_version,created_at,business_publication_revisions(status,source,note,created_at)&business_id=eq.${encodeURIComponent(
       safeBusinessId,
     )}&order=document_version.desc&limit=200`,
   );
@@ -436,8 +524,8 @@ export async function listBuilderPublicationVersions(
   return rows.map((row) => {
     const revisionId = String(row.revision_id ?? "");
     const revisionRelation = row.business_publication_revisions as
-      | { status?: string; source?: string; created_at?: string }
-      | Array<{ status?: string; source?: string; created_at?: string }>
+      | { status?: string; source?: string; note?: string; created_at?: string }
+      | Array<{ status?: string; source?: string; note?: string; created_at?: string }>
       | null;
     const revisionInfo = Array.isArray(revisionRelation) ? revisionRelation[0] : revisionRelation;
     const version = Number(row.document_version ?? 0);
@@ -447,6 +535,7 @@ export async function listBuilderPublicationVersions(
       revisionId,
       status: String(revisionInfo?.status ?? "unknown"),
       source: String(revisionInfo?.source ?? "unknown"),
+      note: String(revisionInfo?.note ?? ""),
       createdAt: String(row.created_at ?? revisionInfo?.created_at ?? ""),
       createdBy: auditByRevision.get(revisionId) ?? null,
       hasBuilderDocument: true,

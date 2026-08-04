@@ -10,7 +10,12 @@ import {
 import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import { resolveBusinessMediaSourceUrl } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
-import { resolveBuilderSeoHints, resolvePublishedBuilderPage } from "@/lib/builder/public-render";
+import {
+  resolveBuilderPageSeoOverride,
+  resolveBuilderSeoHints,
+  resolvePublishedBuilderPage,
+  resolvePublishedBuilderTranslations,
+} from "@/lib/builder/public-render";
 import { PublicBuilderPageContent } from "@/components/builder/public-page-renderer";
 import "@/lib/builder/blocks/index";
 
@@ -29,8 +34,16 @@ export async function generateMetadata({
     return { title: "Blog", description: "Blog listesi." };
   }
 
-  const builderPage = await resolvePublishedBuilderPage(site.panel.business.id, "blog");
-  const builderSeo = resolveBuilderSeoHints(builderPage, site.panel.business.name);
+  const resolved = await resolvePublishedBuilderPage(site.panel.business.id, "blog");
+  const seoOverride = resolved
+    ? resolveBuilderPageSeoOverride(
+        resolved.page,
+        await resolvePublishedBuilderTranslations(site.panel.business.id, resolved.revisionId),
+        site.locale,
+        site.fallbackLocale,
+      )
+    : undefined;
+  const builderSeo = resolveBuilderSeoHints(resolved?.page ?? null, site.panel.business.name, seoOverride);
 
   return buildBusinessSeoMetadata({
     business: site.panel.business,
@@ -55,7 +68,7 @@ export default async function BlogPage({
   }
 
   const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
-  const builderPage = await resolvePublishedBuilderPage(site.panel.business.id, "blog");
+  const resolved = await resolvePublishedBuilderPage(site.panel.business.id, "blog");
 
   return (
     <PublicSiteShell
@@ -65,8 +78,14 @@ export default async function BlogPage({
       currentPath="/blog"
       copy={site.copy}
     >
-      {builderPage ? (
-        <PublicBuilderPageContent page={builderPage} panel={site.panel} locale={site.locale} />
+      {resolved ? (
+        <PublicBuilderPageContent
+          page={resolved.page}
+          panel={site.panel}
+          locale={site.locale}
+          fallbackLocale={site.fallbackLocale}
+          revisionId={resolved.revisionId}
+        />
       ) : (
       <PanelSection
         eyebrow="Blog"

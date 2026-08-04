@@ -1,13 +1,16 @@
 import type { ReactNode } from "react";
 import { getBlockDefinition } from "@/lib/builder/registry";
 import { resolvePublicBlockData } from "@/lib/builder/public-data-adapter";
+import { resolvePublishedBuilderTranslations } from "@/lib/builder/public-render";
+import { applyBuilderSectionTranslations } from "@/lib/builder/translations";
 import type { EditableSection } from "@/lib/builder/editable-section";
 import { getPageContainerWidthPx, type WorkspacePage } from "@/lib/builder/workspace-state";
-import type { BuilderSection, JsonRecord } from "@/lib/builder/types";
+import type { BlockValidationInput, BuilderSection, JsonRecord } from "@/lib/builder/types";
 import type { BusinessPanelData } from "@/lib/business-panel";
+import type { PublishedTranslationRecord, TranslationDraftRecord } from "@/lib/content-translations";
 
 // ============================================================
-// Faz 11 — gercek public sitede builder sayfasini render eden katman.
+// Faz 11/13 — gercek public sitede builder sayfasini render eden katman.
 //
 // components/builder/section-preview.tsx (Faz 5) ile AYNI guvenli-sinir
 // deseni: her section duz fonksiyon olarak cagrilir, hata try/catch ile
@@ -16,6 +19,13 @@ import type { BusinessPanelData } from "@/lib/business-panel";
 // metni ("Bu section render edilirken bir hata olustu" vb.) GOSTERMEZ —
 // bozuk/bilinmeyen bir section sessizce ATLANIR (null doner), boylece tek bir
 // bozuk section public sayfayi asla cirkin bir hata kutusuyla doldurmaz.
+//
+// Faz 13: locale != fallbackLocale ise, YAYINLANMIS revizyona baglanmis
+// builder cevirileri (business_publication_translations, section="builder")
+// okunur ve whitelist'teki alanlara merge edilir; sonra blogun kendi
+// validate()'i TEKRAR calistirilir (maxLength/tip guvencesi cevrilmis
+// metin icin de gecerli olsun diye). Draft cevirisi ASLA buraya sizmaz —
+// yalnizca revisionId ile eslesen published çeviri kullanilir.
 // ============================================================
 
 const HREF_FIELDS_BY_BLOCK: Record<string, string[]> = {
@@ -53,14 +63,18 @@ export function localizeHrefFields(blockKey: string, content: JsonRecord, locale
   return next;
 }
 
-export function PublicBuilderPageContent({
+export async function PublicBuilderPageContent({
   page,
   panel,
   locale,
+  fallbackLocale,
+  revisionId,
 }: {
   page: WorkspacePage;
   panel: BusinessPanelData;
   locale: string;
+  fallbackLocale: string;
+  revisionId: string;
 }) {
   const activeSections = [...page.sections]
     .filter((section) => section.active)
@@ -69,6 +83,12 @@ export function PublicBuilderPageContent({
   if (activeSections.length === 0) {
     return null;
   }
+
+  const businessId = panel.business?.id ?? "";
+  const translations =
+    locale === fallbackLocale
+      ? new Map<string, TranslationDraftRecord | PublishedTranslationRecord>()
+      : await resolvePublishedBuilderTranslations(businessId, revisionId);
 
   // Sayfa duzen ayarlari (containerWidth/backgroundMode/spacing) —
   // components/builder/admin/live-preview.tsx'teki (Faz 10) admin
@@ -98,7 +118,15 @@ export function PublicBuilderPageContent({
         }}
       >
         {activeSections.map((section) => (
-          <PublicBuilderSection key={section.id} page={page} panel={panel} locale={locale} section={section} />
+          <PublicBuilderSection
+            key={section.id}
+            page={page}
+            panel={panel}
+            locale={locale}
+            fallbackLocale={fallbackLocale}
+            translations={translations}
+            section={section}
+          />
         ))}
       </div>
     </div>
@@ -109,11 +137,15 @@ function PublicBuilderSection({
   page,
   panel,
   locale,
+  fallbackLocale,
+  translations,
   section,
 }: {
   page: WorkspacePage;
   panel: BusinessPanelData;
   locale: string;
+  fallbackLocale: string;
+  translations: Map<string, TranslationDraftRecord | PublishedTranslationRecord>;
   section: EditableSection;
 }) {
   const definition = getBlockDefinition(section.blockKey);
@@ -126,7 +158,25 @@ function PublicBuilderSection({
     return null;
   }
 
-  const content = localizeHrefFields(String(section.blockKey), section.content, locale);
+  const translatedContent = applyBuilderSectionTranslations(
+    section.blockKey,
+    section.content,
+    section.id,
+    translations,
+    locale,
+    fallbackLocale,
+  );
+
+  // Cevrilmis metin (uzunluk/tip) de dahil olmak uzere iceriği tekrar
+  // dogrula — yalnizca content degisti, style/responsive aynen kalir.
+  const revalidated = definition.validate({
+    variantKey: section.variantKey,
+    content: translatedContent,
+    style: section.style,
+    responsive: section.responsive,
+  } as BlockValidationInput);
+
+  const content = localizeHrefFields(String(section.blockKey), revalidated.content, locale);
 
   const runtimeSection: BuilderSection = {
     id: section.id,
@@ -137,7 +187,7 @@ function PublicBuilderSection({
     position: section.position,
     active: section.active,
     content,
-    style: section.style,
+    style: revalidated.style,
     responsive: section.responsive,
     createdAt: "",
     updatedAt: "",

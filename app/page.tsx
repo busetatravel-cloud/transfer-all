@@ -20,7 +20,12 @@ import {
   resolveBusinessMediaSourceUrl,
 } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
-import { resolveBuilderSeoHints, resolvePublishedBuilderPage } from "@/lib/builder/public-render";
+import {
+  resolveBuilderPageSeoOverride,
+  resolveBuilderSeoHints,
+  resolvePublishedBuilderPage,
+  resolvePublishedBuilderTranslations,
+} from "@/lib/builder/public-render";
 import { PublicBuilderPageContent } from "@/components/builder/public-page-renderer";
 import "@/lib/builder/blocks/index";
 
@@ -42,12 +47,20 @@ export async function generateMetadata({
     };
   }
 
-  // Fallback zinciri: 1) yayınlanmış builder sayfasının SEO hint'i,
-  // 2) mevcut business SEO ayarları, 3) business adı / legacy hero metni.
-  // Builder yayını yoksa (builderPage=null) builderSeo.title/description da
-  // null döner ve metadata çıktısı birebir eski davranışta kalır.
-  const builderPage = await resolvePublishedBuilderPage(site.panel.business.id, "home");
-  const builderSeo = resolveBuilderSeoHints(builderPage, site.panel.business.name);
+  // Fallback zinciri: 1) locale builder SEO cevirisi, 2) varsayilan builder
+  // SEO hint'i, 3) mevcut business SEO ayarları, 4) business adı / legacy
+  // hero metni. Builder yayını yoksa (resolved=null) builderSeo.title/
+  // description da null döner ve metadata çıktısı birebir eski davranışta kalır.
+  const resolved = await resolvePublishedBuilderPage(site.panel.business.id, "home");
+  const seoOverride = resolved
+    ? resolveBuilderPageSeoOverride(
+        resolved.page,
+        await resolvePublishedBuilderTranslations(site.panel.business.id, resolved.revisionId),
+        site.locale,
+        site.fallbackLocale,
+      )
+    : undefined;
+  const builderSeo = resolveBuilderSeoHints(resolved?.page ?? null, site.panel.business.name, seoOverride);
 
   return buildBusinessSeoMetadata({
     business: site.panel.business,
@@ -113,7 +126,7 @@ export default async function HomePage({
   // pasif/bos/bozuksa) resolvePublishedBuilderPage null doner ve asagidaki
   // LEGACY hero+panel JSX'i AYNEN calismaya devam eder — mevcut public site
   // davranisi hicbir tenant icin bozulmaz.
-  const builderHomePage = await resolvePublishedBuilderPage(business.id, "home");
+  const resolvedHome = await resolvePublishedBuilderPage(business.id, "home");
 
   return (
     <PublicSiteShell
@@ -123,8 +136,14 @@ export default async function HomePage({
       currentPath="/"
       copy={site.copy}
     >
-      {builderHomePage ? (
-        <PublicBuilderPageContent page={builderHomePage} panel={site.panel} locale={site.locale} />
+      {resolvedHome ? (
+        <PublicBuilderPageContent
+          page={resolvedHome.page}
+          panel={site.panel}
+          locale={site.locale}
+          fallbackLocale={site.fallbackLocale}
+          revisionId={resolvedHome.revisionId}
+        />
       ) : (
       <section className="grid gap-8">
         <div className="ps-hero grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">

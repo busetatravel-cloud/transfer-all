@@ -9,7 +9,15 @@ export type TranslationSection =
   | "menus"
   | "publicForm"
   | "voucher"
-  | "booking";
+  | "booking"
+  // Website Builder (Faz 13) — bilerek TRANSLATION_SECTIONS dizisine
+  // EKLENMEDI: /app/languages ekrani getSectionSeeds() ile beslenir ve
+  // builder sayfa/section'larindan haberi yoktur; oraya eklemek bos/yarim
+  // bir bolum acardi. Builder cevirileri yalnizca Website Builder'in kendi
+  // inspector panelinden yonetilir, ayni alttaki business_content_translations
+  // / business_publication_translations tablolarini "builder" section'i ile
+  // kullanir (bkz. lib/builder/translations.ts).
+  | "builder";
 
 export type TranslationFieldKey =
   | "name"
@@ -72,7 +80,13 @@ export type TranslationFieldKey =
   | "waitingDescription"
   | "noResultTitle"
   | "noResultDescription"
-  | "reservationLabel";
+  | "reservationLabel"
+  // Website Builder (Faz 13) alanlari
+  | "subtitle"
+  | "primaryButtonText"
+  | "secondaryButtonText"
+  | "seoTitleHint"
+  | "seoDescriptionHint";
 
 export type TranslationDraftRecord = {
   id: string;
@@ -347,6 +361,29 @@ export const SECTION_FIELD_LABELS: Record<
     noResultDescription: "Girilen rezervasyon kodu veya telefon numarası ile eşleşen kayıt yok.",
     reservationLabel: "Rezervasyon",
   },
+  // Website Builder (Faz 13) — TRANSLATION_SECTIONS'a eklenmedigi icin
+  // /app/languages ekraninda gorunmez (bkz. TranslationSection tanimi
+  // ustundeki not); yalnizca builder'in kendi inspector paneli bu label'lari
+  // kullanir. Etiketler hangi blok tipinde kullanildiklarindan bagimsiz,
+  // fieldKey'e gore tek bir anlam tasir.
+  builder: {
+    name: "",
+    heroTitle: "",
+    heroSubtitle: "",
+    heroButtonText: "",
+    title: "Başlık",
+    description: "Açıklama",
+    excerpt: "",
+    content: "",
+    metaTitle: "",
+    metaDescription: "",
+    eyebrow: "Üst etiket",
+    subtitle: "Alt başlık",
+    primaryButtonText: "Birincil buton metni",
+    secondaryButtonText: "İkincil buton metni",
+    seoTitleHint: "SEO başlığı",
+    seoDescriptionHint: "SEO açıklaması",
+  },
 };
 
 export function getSectionFieldOrder(section: TranslationSection) {
@@ -408,6 +445,17 @@ export function getSectionFieldOrder(section: TranslationSection) {
         "noResultTitle",
         "noResultDescription",
         "reservationLabel",
+      ] as const;
+    case "builder":
+      return [
+        "eyebrow",
+        "title",
+        "subtitle",
+        "description",
+        "primaryButtonText",
+        "secondaryButtonText",
+        "seoTitleHint",
+        "seoDescriptionHint",
       ] as const;
   }
 }

@@ -8,6 +8,14 @@ import {
   resolveBusinessMediaSourceUrl,
 } from "@/lib/media";
 import { buildBusinessSeoMetadata } from "@/lib/seo";
+import {
+  resolveBuilderPageSeoOverride,
+  resolveBuilderSeoHints,
+  resolvePublishedBuilderPage,
+  resolvePublishedBuilderTranslations,
+} from "@/lib/builder/public-render";
+import { PublicBuilderPageContent } from "@/components/builder/public-page-renderer";
+import "@/lib/builder/blocks/index";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,13 +32,24 @@ export async function generateMetadata({
     return { title: "Iletisim", description: "Iletisim sayfasi." };
   }
 
+  const resolved = await resolvePublishedBuilderPage(site.panel.business.id, "contact");
+  const seoOverride = resolved
+    ? resolveBuilderPageSeoOverride(
+        resolved.page,
+        await resolvePublishedBuilderTranslations(site.panel.business.id, resolved.revisionId),
+        site.locale,
+        site.fallbackLocale,
+      )
+    : undefined;
+  const builderSeo = resolveBuilderSeoHints(resolved?.page ?? null, site.panel.business.name, seoOverride);
+
   return buildBusinessSeoMetadata({
     business: site.panel.business,
     seo: site.panel.seo,
     locales: site.panel.locales,
     pathname: "/contact",
-    title: `${site.panel.business.name} | Iletisim`,
-    description: site.panel.seo.metaDescription || "Business iletisim bilgileri",
+    title: builderSeo.title || `${site.panel.business.name} | Iletisim`,
+    description: builderSeo.description || site.panel.seo.metaDescription || "Business iletisim bilgileri",
   });
 }
 
@@ -46,6 +65,14 @@ export default async function ContactPage({
     notFound();
   }
 
+  // Faz 13 — Contact sayfasi KISMI builder entegrasyonu: kritik teklif
+  // formu (PublicQuoteForm) ve firma bilgi karti HER ZAMAN, degismeden,
+  // asagida render edilir. Builder'da "contact" sayfasi yayinlanmissa,
+  // yalnizca EK icerik (ör. Hero/CTA) formun UZERINDE gosterilir — form
+  // hicbir zaman builder'a bagli/kosullu degildir, businessId/tenant
+  // scope/validation/submission API'si bu degisiklikten etkilenmez.
+  const resolvedContact = await resolvePublishedBuilderPage(site.panel.business.id, "contact");
+
   return (
     <PublicSiteShell
       business={site.panel.business}
@@ -54,6 +81,17 @@ export default async function ContactPage({
       currentPath="/contact"
       copy={site.copy}
     >
+      {resolvedContact ? (
+        <div className="mb-8">
+          <PublicBuilderPageContent
+            page={resolvedContact.page}
+            panel={site.panel}
+            locale={site.locale}
+            fallbackLocale={site.fallbackLocale}
+            revisionId={resolvedContact.revisionId}
+          />
+        </div>
+      ) : null}
       <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <PanelSection
           eyebrow={site.copy.menus.contact}

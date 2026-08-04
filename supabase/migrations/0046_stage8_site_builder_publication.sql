@@ -161,7 +161,24 @@ begin
   -- (optimistic lock'u sessizce atlar). base_published_version + 1 kullanmak
   -- bunu imkansiz kilar: ilk publish 1 -> 2 yapar, ikinci paralel deneme artik
   -- "expected=1" ile eslesmeyen "current=2" gorur ve published_conflict alir.
-  v_next_published_version := v_draft.base_published_version + 1;
+  --
+  -- Faz 13 duzeltmesi: rollback_builder_publication draft'a HICBIR sekilde
+  -- dokunmadan (base_published_version guncellenmeden) document_version'i
+  -- ileri tasiyabilir (bkz. asagidaki fonksiyon). Bu durumda tek basina
+  -- "base_published_version + 1" kullanmak, rollback'in zaten olusturdugu
+  -- bir document_version ile CAKISABILIRDI (ayni business icin iki farkli
+  -- satirin ayni document_version'a sahip olmasi). greatest(...) ile her
+  -- zaman mevcut en yuksek document_version'in da onunde kalmasi garanti
+  -- edilir — rollback hic yasanmadiysa iki taraf zaten esittir, davranis
+  -- degismez.
+  select greatest(
+    v_draft.base_published_version + 1,
+    coalesce((
+      select max(document_version) + 1
+      from public.business_publication_site_builder_documents
+      where business_id = p_business_id
+    ), 1)
+  ) into v_next_published_version;
 
   select coalesce(max(version), 0) + 1
     into v_ledger_version
@@ -192,7 +209,30 @@ $$;
 -- ============================================================
 -- Rollback hazirligi: eski bir builder snapshot'ini YENI bir revision olarak
 -- kopyalar (mevcut satirlari mutate etmez, immutable snapshot ilkesi korunur).
--- Draft tablosuna HICBIR yazma yapmaz — draft otomatik degismez.
+-- Draft tablosuna HICBIR YAZMA yapmaz — draft otomatik degismez.
+--
+-- Faz 13 SON DUZELTME — race condition kapatildi: bu fonksiyon onceden
+-- document_version'i hicbir kilit almadan "select max(document_version)+1"
+-- ile hesapliyordu. Iki paralel rollback (veya bir rollback + bir ayni-anda
+-- calisan publish_builder_draft) bu SELECT'i ayni anda, birbirinin henuz
+-- commit etmedigi bir sirada calistirabilir ve İKİSİ DE AYNI document_version
+-- degerini hesaplayip iki ayri satir olarak insert edebilirdi (business_id +
+-- document_version uzerinde unique constraint yok, yalnizca (business_id,
+-- revision_id) unique — bu satirlari engellemez). Sonuc: ayni business icin
+-- iki farkli revision, ayni document_version'a sahip olabilir; bu da
+-- getLatestPublishedBuilderDocument/listBuilderPublicationVersions'in "en
+-- guncel"i belirsiz/rastgele secmesine yol acar (iki "Aktif" surum).
+--
+-- Duzeltme: publish_builder_draft ile AYNI kilit kaynagini kullan —
+-- business_site_builder_drafts satirini "for update" ile kilitle. Bu, ayni
+-- business icin calisan HERHANGI bir publish veya rollback cagrisini bu
+-- transaction commit/rollback olana kadar SERI hale getirir (Postgres'in
+-- kendi row-lock bekleme mekanizmasi araciligiyla — ek bir advisory lock
+-- gerekmez). document_version hesaplamasi artik bu kilit ALINDIKTAN SONRA
+-- yapiliyor, boylece "oku + hesapla + yaz" ucgeni atomik hale gelir. Draft
+-- satirinin SADECE OKUNMASI (yazilmamasi) "draft'a hicbir zaman yazma
+-- yapilmaz" ilkesini bozmaz — kilit yalnizca karsilikli dislama icin
+-- kullanilir, draft'in hicbir sutunu update edilmez.
 -- ============================================================
 create or replace function public.rollback_builder_publication(
   p_business_id uuid,
@@ -207,6 +247,7 @@ returns table (
 language plpgsql
 as $$
 declare
+  v_draft_id uuid;
   v_target public.business_publication_site_builder_documents%rowtype;
   v_ledger_version integer;
   v_next_published_version integer;
@@ -215,6 +256,21 @@ declare
 begin
   if p_business_id is null or p_target_revision_id is null then
     raise exception 'business_id_and_target_revision_required';
+  end if;
+
+  -- publish_builder_draft ile PAYLASILAN kilit kaynagi: draft satirini
+  -- (yalniz OKUMA amacli) kilitle. Bu satir uzerinde ayni anda calisan
+  -- baska bir rollback veya publish, bu transaction commit/rollback olana
+  -- kadar bekler — asagidaki document_version hesabi artik kilitsiz bir
+  -- yaris degil, karsilikli dislama altinda calisir.
+  select id
+    into v_draft_id
+    from public.business_site_builder_drafts
+    where business_id = p_business_id
+    for update;
+
+  if not found then
+    raise exception 'draft_not_found';
   end if;
 
   -- NOT: RETURNS TABLE(revision_id ...) bu fonksiyon govdesinde otomatik
@@ -236,10 +292,12 @@ begin
     from public.business_publication_revisions
     where business_id = p_business_id;
 
-  -- Rollback draft'a hicbir sekilde dokunmadigi icin (base_published_version
+  -- Rollback draft'a hicbir sekilde YAZMA yapmadigi icin (base_published_version
   -- güncellenmez), builder-local versiyon sayacini draft'tan degil, mevcut
   -- snapshot tablosunun kendisinden turetiyoruz — boylece publish ile ayni
-  -- monoton sayaci paylasir, hicbir zaman geriye gitmez veya cakismaz.
+  -- monoton sayaci paylasir, hicbir zaman geriye gitmez veya cakismaz. Bu
+  -- SELECT artik yukaridaki "for update" kilidi altinda calistigi icin,
+  -- ayni anda calisan baska bir rollback/publish bu degeri degistiremez.
   select coalesce(max(document_version), 0) + 1
     into v_next_published_version
     from public.business_publication_site_builder_documents

@@ -27,6 +27,12 @@ import {
 import type { EditableSection } from "@/lib/builder/editable-section";
 import { asBlockKey, type JsonRecord } from "@/lib/builder/types";
 import type { PreviewMode } from "@/components/builder/responsive-preview-frame";
+import { SUPPORTED_LANGUAGES } from "@/lib/languages";
+import {
+  BUILDER_FIELD_LABELS,
+  getTranslatablePageFields,
+  getTranslatableSectionFields,
+} from "@/lib/builder/translatable-fields";
 import "@/lib/builder/templates/index";
 
 type BuilderDraftApiRecord = {
@@ -74,6 +80,33 @@ type DraftLoadState = "loading" | "ready" | "error";
 type DraftSaveState = "idle" | "saving" | "saved" | "error" | "conflict";
 type DraftPublishState = "idle" | "publishing" | "published" | "error" | "conflict";
 
+type BuilderVersionSummary = {
+  version: number;
+  revisionId: string;
+  status: string;
+  source: string;
+  note: string;
+  createdAt: string;
+  createdBy: string | null;
+  hasBuilderDocument: boolean;
+  isActive: boolean;
+};
+
+type BuilderVersionsApiResponse =
+  | { ok: true; versions: BuilderVersionSummary[] }
+  | { ok: false; code?: string; message?: string };
+
+type BuilderVersionDocumentApiResponse =
+  | { ok: true; version: number; document: BuilderDraftPersistenceRecord }
+  | { ok: false; code?: string; message?: string };
+
+type BuilderRollbackApiResponse =
+  | { ok: true; revisionId: string; publishedVersion: number; publishedAt: string }
+  | { ok: false; code?: string; message?: string };
+
+type RollbackState = "idle" | "rolling-back" | "done" | "error";
+type VersionPreviewLoadState = "idle" | "loading" | "ready" | "error";
+
 export function WebsiteBuilderShell() {
   const [documentState, dispatch] = useReducer(
     builderDocumentReducer,
@@ -89,6 +122,106 @@ export function WebsiteBuilderShell() {
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const isSavingRef = useRef(false);
   const isPublishingRef = useRef(false);
+
+  // Faz 13 — Version History / Rollback / Preview.
+  const [versions, setVersions] = useState<BuilderVersionSummary[]>([]);
+  const [versionsLoadState, setVersionsLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [rollbackState, setRollbackState] = useState<RollbackState>("idle");
+  const [rollbackMessage, setRollbackMessage] = useState<string | null>(null);
+  const isRollingBackRef = useRef(false);
+  const [previewVersion, setPreviewVersion] = useState<number | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<BuilderDraftPersistenceRecord | null>(null);
+  const [previewLoadState, setPreviewLoadState] = useState<VersionPreviewLoadState>("idle");
+
+  async function loadVersions() {
+    setVersionsLoadState("loading");
+    try {
+      const response = await fetch("/api/business/site-builder/versions", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as BuilderVersionsApiResponse | null;
+      if (!response.ok || !payload || !payload.ok) {
+        throw new Error(payload && !payload.ok && payload.message ? payload.message : "Sürüm geçmişi yüklenemedi.");
+      }
+      setVersions(payload.versions);
+      setVersionsLoadState("ready");
+    } catch {
+      setVersionsLoadState("error");
+    }
+  }
+
+  useEffect(() => {
+    void loadVersions();
+  }, []);
+
+  async function handlePreviewVersion(version: number) {
+    if (previewVersion === version) {
+      // Ayni surume tekrar tiklamak onizlemeyi kapatir.
+      setPreviewVersion(null);
+      setPreviewDocument(null);
+      setPreviewLoadState("idle");
+      return;
+    }
+
+    setPreviewVersion(version);
+    setPreviewDocument(null);
+    setPreviewLoadState("loading");
+
+    try {
+      const response = await fetch(`/api/business/site-builder/versions?version=${version}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as BuilderVersionDocumentApiResponse | null;
+      if (!response.ok || !payload || !payload.ok) {
+        throw new Error(payload && !payload.ok && payload.message ? payload.message : "Sürüm yüklenemedi.");
+      }
+      setPreviewDocument(payload.document);
+      setPreviewLoadState("ready");
+    } catch {
+      setPreviewLoadState("error");
+    }
+  }
+
+  async function handleRollback(targetRevisionId: string, targetVersion: number) {
+    // Cift tiklamayi senkron ref kilidiyle engelle (save/publish ile ayni desen).
+    if (isRollingBackRef.current || rollbackState === "rolling-back") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `v${targetVersion} sürümüne geri dönülecek. Bu, mevcut yayını DEĞİŞTİRMEZ yalnızca yeni bir sürüm olarak eklenir. Devam edilsin mi?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    isRollingBackRef.current = true;
+    setRollbackState("rolling-back");
+    setRollbackMessage(null);
+
+    try {
+      const response = await fetch("/api/business/site-builder/rollback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetRevisionId }),
+      });
+      const payload = (await response.json().catch(() => null)) as BuilderRollbackApiResponse | null;
+
+      if (!response.ok || !payload || !payload.ok) {
+        throw new Error(payload && !payload.ok && payload.message ? payload.message : "Geri alma işlemi başarısız.");
+      }
+
+      setRollbackState("done");
+      setRollbackMessage(
+        `Geri alma tamamlandı: yeni sürüm v${payload.publishedVersion} olarak yayınlandı. Not: taslağınızın kendi "yayın referansı" bu işlemden etkilenmez, bir sonraki normal yayınlama otomatik olarak doğru sürümden devam eder.`,
+      );
+      setPreviewVersion(null);
+      setPreviewDocument(null);
+      await loadVersions();
+    } catch (error) {
+      setRollbackState("error");
+      setRollbackMessage(error instanceof Error ? error.message : "Geri alma işlemi başarısız.");
+    } finally {
+      isRollingBackRef.current = false;
+    }
+  }
 
   // dirty=true iken sekme kapatma/yenileme/navigasyon icin uyari goster.
   // dirty=false oldugu an (save basarili, discard, hydration) effect temizlenir
@@ -424,6 +557,7 @@ export function WebsiteBuilderShell() {
       });
       setPublishState("published");
       setPublishMessage(`Website yayınlandı (v${payload.publishedVersion}).`);
+      await loadVersions();
     } catch (error) {
       setPublishState("error");
       setPublishMessage(error instanceof Error ? error.message : "Yayın işlemi başarısız.");
@@ -624,6 +758,67 @@ export function WebsiteBuilderShell() {
           <p className="mt-2 text-xs leading-5 text-slate-500">
             Autosave hazirlik modu pasif durumda; {documentState.draft.autosave.intervalMs / 1000}s aralik ve draft dirty takibi hazir.
           </p>
+        </PanelCard>
+
+        <PanelCard
+          eyebrow="Version History"
+          title="Sürüm geçmişi"
+          description="Her yayın kalıcı bir sürüm olarak listelenir; eski bir sürüme dönmek yeni bir sürüm oluşturur, hiçbir satır değiştirilmez."
+        >
+          {versionsLoadState === "loading" ? (
+            <p className="text-xs text-slate-500">Yükleniyor...</p>
+          ) : versionsLoadState === "error" ? (
+            <p className="text-xs text-rose-600">Sürüm geçmişi yüklenemedi.</p>
+          ) : versions.length === 0 ? (
+            <p className="text-xs text-slate-500">Henüz hiç yayın yapılmadı.</p>
+          ) : (
+            <div className="grid gap-2">
+              {versions.map((version) => (
+                <article
+                  key={version.revisionId}
+                  className="rounded-2xl border border-slate-200 bg-white p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-slate-950">v{version.version}</span>
+                    {version.isActive ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                        Aktif
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {new Date(version.createdAt).toLocaleString("tr-TR")} · {version.source}
+                  </div>
+                  {version.note ? <div className="mt-1 text-xs text-slate-600">{version.note}</div> : null}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <SectionActionButton
+                      label={previewVersion === version.version ? "Önizlemeyi kapat" : "Önizle"}
+                      onClick={() => void handlePreviewVersion(version.version)}
+                    />
+                    <SectionActionButton
+                      label="Bu sürüme geri dön"
+                      disabled={rollbackState === "rolling-back" || version.isActive}
+                      onClick={() => void handleRollback(version.revisionId, version.version)}
+                    />
+                  </div>
+
+                  {previewVersion === version.version ? (
+                    <VersionPreviewPanel
+                      loadState={previewLoadState}
+                      document={previewDocument}
+                      currentPageKey={selectedPage.key}
+                    />
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          )}
+
+          {rollbackMessage ? (
+            <p className={`mt-3 text-xs ${rollbackState === "error" ? "text-rose-600" : "text-emerald-600"}`}>
+              {rollbackMessage}
+            </p>
+          ) : null}
         </PanelCard>
       </aside>
 
@@ -846,6 +1041,61 @@ export function WebsiteBuilderShell() {
         )}
       </aside>
     </section>
+  );
+}
+
+// Faz 13 (item 9) — eski bir surumun READ-ONLY onizlemesi. Mevcut
+// LivePreview render katmani AYNEN yeniden kullanilir (yeni bir renderer
+// yazilmadi); onSelectSection/onReorderSection bilerek verilmez, boylece
+// hicbir edit aksiyonu mumkun olmaz ve draft state'ine hicbir sekilde
+// karismaz (yalnizca fetch edilen salt-okunur document'i gosterir).
+function VersionPreviewPanel({
+  loadState,
+  document,
+  currentPageKey,
+}: {
+  loadState: VersionPreviewLoadState;
+  document: BuilderDraftPersistenceRecord | null;
+  currentPageKey: string;
+}) {
+  if (loadState === "loading") {
+    return <p className="mt-3 text-xs text-slate-500">Önizleme yükleniyor...</p>;
+  }
+
+  if (loadState === "error" || !document) {
+    return <p className="mt-3 text-xs text-rose-600">Önizleme yüklenemedi.</p>;
+  }
+
+  const page = document.workspace.pages.find((entry) => entry.key === currentPageKey) ?? document.workspace.pages[0];
+
+  if (!page) {
+    return <p className="mt-3 text-xs text-slate-500">Bu sürümde sayfa bulunamadı.</p>;
+  }
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+      <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Salt okunur önizleme — {page.key}
+      </div>
+      <LivePreview
+        mode="desktop"
+        pageSettings={page}
+        sections={page.sections}
+        selectedSectionId={null}
+        themeSettings={{
+          templateKey: "modern",
+          primaryColor: "#0f172a",
+          secondaryColor: "#f97316",
+          backgroundColor: "#f8fafc",
+          surfaceColor: "#ffffff",
+          textColor: "#0f172a",
+          borderRadius: "lg",
+          shadow: "soft",
+          fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+          colorMode: "light",
+        }}
+      />
+    </div>
   );
 }
 
@@ -1150,6 +1400,14 @@ function SectionInspector({
         ) : null}
       </InspectorGroup>
 
+      <TranslationPanel
+        sourceId={section.id}
+        fields={getTranslatableSectionFields(String(section.blockKey))}
+        defaultValues={Object.fromEntries(
+          getTranslatableSectionFields(String(section.blockKey)).map((field) => [field, textValue(section.content, field)]),
+        )}
+      />
+
       <PanelCard eyebrow="Page" title="Hizli aksiyonlar" description="Sayfa ayarlarina gecmek veya secimi temizlemek icin.">
         <div className="flex flex-wrap gap-2">
           <SectionActionButton label="Sayfa ayarlari" onClick={onClearSelection} />
@@ -1231,6 +1489,17 @@ function PageSettingsInspector({
         />
       </InspectorGroup>
 
+      <TranslationPanel
+        sourceId={page.id}
+        fields={getTranslatablePageFields()}
+        defaultValues={{
+          title: page.title,
+          description: page.description,
+          seoTitleHint: page.seoTitleHint,
+          seoDescriptionHint: page.seoDescriptionHint,
+        }}
+      />
+
       <InspectorGroup title="Layout">
         <SelectField
           label="Container width"
@@ -1286,6 +1555,185 @@ function PageSettingsInspector({
         </div>
       </PanelCard>
     </>
+  );
+}
+
+// Faz 13 — builder icerigi icin coklu dil paneli. Varsayilan dil icerigi
+// HER ZAMAN ana document'te kalir (bu panel onu asla degistirmez); burada
+// yalnizca SECILI dilin override'lari duzenlenir ve
+// /api/business/site-builder/translations uzerinden draft seviyesinde
+// kaydedilir (mevcut "Taslagi Kaydet" akisindan BAGIMSIZ). Bos birakilan
+// bir alan, o dil icin cevirinin silinmesi/olmamasi anlamina gelir ve
+// public render varsayilan dile duser.
+function TranslationPanel({
+  sourceId,
+  fields,
+  defaultValues,
+}: {
+  sourceId: string;
+  fields: readonly string[];
+  defaultValues: Record<string, string>;
+}) {
+  const [locale, setLocale] = useState("en");
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const isSavingRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoadState("loading");
+      setSaveState("idle");
+      setSaveMessage(null);
+
+      try {
+        const response = await fetch(
+          `/api/business/site-builder/translations?locale=${encodeURIComponent(locale)}`,
+          { cache: "no-store" },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { ok: true; entries: Array<{ sourceId: string; fieldKey: string; translatedText: string }> }
+          | { ok: false; message?: string }
+          | null;
+
+        if (!response.ok || !payload || !payload.ok) {
+          throw new Error(payload && !payload.ok && payload.message ? payload.message : "Çeviriler yüklenemedi.");
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const next: Record<string, string> = {};
+        for (const entry of payload.entries) {
+          if (entry.sourceId === sourceId) {
+            next[entry.fieldKey] = entry.translatedText;
+          }
+        }
+        setOverrides(next);
+        setLoadState("ready");
+      } catch {
+        if (!cancelled) {
+          setLoadState("error");
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, sourceId]);
+
+  function handleFieldChange(fieldKey: string, value: string) {
+    setOverrides((prev) => ({ ...prev, [fieldKey]: value }));
+  }
+
+  async function handleSave() {
+    if (isSavingRef.current) {
+      return;
+    }
+
+    isSavingRef.current = true;
+    setSaveState("saving");
+    setSaveMessage(null);
+
+    try {
+      const entries = fields.map((fieldKey) => ({
+        sourceId,
+        fieldKey,
+        translatedText: overrides[fieldKey] ?? "",
+      }));
+
+      const response = await fetch("/api/business/site-builder/translations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale, entries }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { ok: true; issues: Array<{ message: string }> }
+        | { ok: false; message?: string }
+        | null;
+
+      if (!response.ok || !payload || !payload.ok) {
+        throw new Error(payload && !payload.ok && payload.message ? payload.message : "Çeviri kaydedilemedi.");
+      }
+
+      setSaveState("saved");
+      setSaveMessage(
+        payload.issues.length ? `Kaydedildi (${payload.issues.length} alan atlandı).` : "Çeviri kaydedildi.",
+      );
+    } catch (error) {
+      setSaveState("error");
+      setSaveMessage(error instanceof Error ? error.message : "Çeviri kaydedilemedi.");
+    } finally {
+      isSavingRef.current = false;
+    }
+  }
+
+  if (fields.length === 0) {
+    return null;
+  }
+
+  return (
+    <InspectorGroup title="Çoklu Dil">
+      <SelectField
+        label="Düzenlenen dil"
+        onChange={setLocale}
+        options={SUPPORTED_LANGUAGES.map((language) => ({
+          value: language.code,
+          label: `${language.nativeLabel} (${language.code})`,
+        }))}
+        value={locale}
+      />
+
+      {loadState === "loading" ? <p className="text-xs text-slate-500">Yükleniyor...</p> : null}
+      {loadState === "error" ? <p className="text-xs text-rose-600">Çeviriler yüklenemedi.</p> : null}
+
+      <div className="grid gap-4">
+        {fields.map((fieldKey) => {
+          const value = overrides[fieldKey] ?? "";
+          const hasOverride = value.trim().length > 0;
+
+          return (
+            <div key={fieldKey} className="grid gap-1">
+              <TextAreaField
+                label={`${BUILDER_FIELD_LABELS[fieldKey as keyof typeof BUILDER_FIELD_LABELS] ?? fieldKey} — ${locale}`}
+                onChange={(next) => handleFieldChange(fieldKey, next)}
+                rows={2}
+                value={value}
+              />
+              <p className="text-xs leading-5 text-slate-500">
+                Varsayılan dil içeriği: {defaultValues[fieldKey]?.trim() || "—"}
+              </p>
+              {!hasOverride ? (
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-600">
+                  Bu dilde çeviri yok — ziyaretçiye varsayılan dil gösterilir
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <SectionActionButton
+          label={saveState === "saving" ? "Kaydediliyor..." : "Çeviriyi kaydet"}
+          disabled={saveState === "saving" || loadState === "loading"}
+          onClick={() => void handleSave()}
+        />
+        {saveMessage ? (
+          <span className={`text-xs ${saveState === "error" ? "text-rose-600" : "text-emerald-600"}`}>
+            {saveMessage}
+          </span>
+        ) : null}
+      </div>
+    </InspectorGroup>
   );
 }
 

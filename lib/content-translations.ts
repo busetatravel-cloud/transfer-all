@@ -361,6 +361,13 @@ export function getSectionSeeds(panel: {
       { section: "booking", sourceId: "empty", fieldKey: "noResultDescription", sourceText: DEFAULT_PUBLIC_COPY.booking.noResultDescription },
       { section: "booking", sourceId: "empty", fieldKey: "reservationLabel", sourceText: DEFAULT_PUBLIC_COPY.booking.reservationLabel },
     ],
+    // Builder seed'leri bu fonksiyondan gelmez (BusinessPanelData'da builder
+    // sayfa/section'lari yok) — lib/builder/translations.ts kendi seed'ini
+    // dogrudan builder document'indan uretir. Bu bos dizi yalnizca
+    // Record<TranslationSection, ...> tip sozlesmesini tutarli tutmak icindir
+    // ve /app/languages ekraninda hicbir zaman kullanilmaz (TRANSLATION_SECTIONS
+    // "builder"i icermez).
+    builder: [],
   } satisfies Record<TranslationSection, SectionTranslationSeed[]>;
 }
 
