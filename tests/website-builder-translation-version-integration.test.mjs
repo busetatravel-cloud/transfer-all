@@ -56,6 +56,10 @@ const { resolveBuilderSeoHints, resolvePublishedBuilderPage, resolvePublishedBui
   "../lib/builder/public-render.ts",
 );
 const { isRTLLanguage } = jiti("../lib/languages.ts");
+const { builderDocumentReducer, createBuilderDraftPersistenceRecord, createInitialBuilderDocumentState } = jiti(
+  "../lib/builder/document-state.ts",
+);
+const { asBlockKey } = jiti("../lib/builder/types.ts");
 
 function restHeaders(extra = {}) {
   return {
@@ -646,6 +650,122 @@ test(
         assert.deepEqual(versions.sort((a, b) => a - b), [2, 3, 4, 5], "versions must strictly increase: v1, v2, rollback, v3");
       } finally {
         await deleteTestBusiness(businessId);
+      }
+    });
+  },
+);
+
+// ------------------------------------------------------------
+// Faz 15 — repeater (tekrarlanan öğe listesi) çevirileri: Hero Slider'ın
+// slaytları, FAQ'in soruları vb. gibi dizi içindeki ögelerin KENDİ
+// çevirisini `${sectionId}:${itemId}` bileşik sourceId'siyle yönetmesi.
+// ------------------------------------------------------------
+
+function addFaqSectionWithItems(previousDraftDocument, items) {
+  const baseState = createInitialBuilderDocumentState();
+  const homeId = baseState.draft.workspace.pages[0].id;
+  const withFaq = builderDocumentReducer(baseState, { type: "add-block", pageId: homeId, blockKey: asBlockKey("faq") });
+  const homePage = withFaq.draft.workspace.pages.find((page) => page.id === homeId);
+  const faqSection = homePage.sections.find((section) => section.blockKey === "faq");
+  const withItems = builderDocumentReducer(withFaq, {
+    type: "update-section-content",
+    pageId: homeId,
+    sectionId: faqSection.id,
+    patch: { items },
+  });
+  void previousDraftDocument;
+  return { document: createBuilderDraftPersistenceRecord(withItems), faqSectionId: faqSection.id };
+}
+
+test(
+  "website builder repeater (Hero Slider/FAQ item-level) translations — real local Supabase integration",
+  { skip: localSupabaseUp ? false : "local Supabase (127.0.0.1:54321) is not running — run `supabase start` first" },
+  async (t) => {
+    setLocalEnv();
+
+    await t.test("FAQ item question/answer translated via compound sourceId, round-trips and applies to public render", async () => {
+      const businessId = await createTestBusiness("faq-repeater");
+      try {
+        const seeded = await getBusinessBuilderDraft(businessId);
+        const { document, faqSectionId } = addFaqSectionWithItems(seeded.document, [
+          { id: "faq-item-1", question: "Rezervasyon nasil yapilir?", answer: "Sitemiz uzerinden.", active: true, order: 0 },
+          { id: "faq-item-2", question: "Iptal politikasi nedir?", answer: "48 saat once ucretsiz.", active: true, order: 1 },
+        ]);
+
+        const saved = await saveBusinessBuilderDraft({ businessId, document, expectedVersion: seeded.draftVersion, updatedBy: null });
+
+        const itemSourceId = `${faqSectionId}:faq-item-1`;
+        const { saved: savedTranslations, issues } = await saveBuilderTranslations({
+          businessId,
+          localeCode: "en",
+          entries: [
+            { sourceId: itemSourceId, fieldKey: "question", translatedText: "How do I make a reservation?" },
+            { sourceId: itemSourceId, fieldKey: "answer", translatedText: "Through our website." },
+          ],
+        });
+        assert.equal(issues.length, 0);
+        assert.equal(savedTranslations.length, 2);
+
+        const drafts = await loadBuilderTranslationDrafts(businessId, "en");
+        assert.equal(drafts.filter((row) => row.sourceId === itemSourceId).length, 2);
+
+        const published = await publishBuilderDraft({ businessId, expectedDraftVersion: saved.draftVersion, expectedPublishedVersion: saved.basePublishedVersion });
+        const resolved = await resolvePublishedBuilderPage(businessId, "home");
+        assert.ok(resolved);
+        const faqSection = resolved.page.sections.find((section) => section.id === faqSectionId);
+        assert.ok(faqSection, "the FAQ section must be present in the published home page");
+
+        const lookup = await resolvePublishedBuilderTranslations(businessId, published.revisionId);
+        const applied = applyBuilderSectionTranslations("faq", faqSection.content, faqSection.id, lookup, "en", "tr");
+
+        assert.equal(applied.items[0].question, "How do I make a reservation?");
+        assert.equal(applied.items[0].answer, "Through our website.");
+        assert.equal(applied.items[1].question, "Iptal politikasi nedir?", "the untranslated second item must fall back to the default locale, unaffected");
+
+        const defaultLocaleDraft = await getBusinessBuilderDraft(businessId);
+        const defaultFaq = defaultLocaleDraft.document.workspace.pages
+          .find((page) => page.key === "home")
+          .sections.find((section) => section.id === faqSectionId);
+        assert.equal(defaultFaq.content.items[0].question, "Rezervasyon nasil yapilir?", "the default-locale document itself must never be mutated by an item-level translation");
+      } finally {
+        await deleteTestBusiness(businessId);
+      }
+    });
+
+    await t.test("Repeater translation write rejects an unknown item id and a cross-tenant compound sourceId", async () => {
+      const businessA = await createTestBusiness("faq-repeater-cross-a");
+      const businessB = await createTestBusiness("faq-repeater-cross-b");
+      try {
+        const seededA = await getBusinessBuilderDraft(businessA);
+        const { document: documentA, faqSectionId: faqSectionIdA } = addFaqSectionWithItems(seededA.document, [
+          { id: "only-in-a", question: "Q", answer: "A", active: true, order: 0 },
+        ]);
+        await saveBusinessBuilderDraft({ businessId: businessA, document: documentA, expectedVersion: seededA.draftVersion, updatedBy: null });
+
+        const seededB = await getBusinessBuilderDraft(businessB);
+        const { document: documentB } = addFaqSectionWithItems(seededB.document, [
+          { id: "only-in-b", question: "Q2", answer: "A2", active: true, order: 0 },
+        ]);
+        await saveBusinessBuilderDraft({ businessId: businessB, document: documentB, expectedVersion: seededB.draftVersion, updatedBy: null });
+
+        const unknownItem = await saveBuilderTranslations({
+          businessId: businessA,
+          localeCode: "en",
+          entries: [{ sourceId: `${faqSectionIdA}:does-not-exist`, fieldKey: "question", translatedText: "x" }],
+        });
+        assert.equal(unknownItem.saved.length, 0);
+        assert.equal(unknownItem.issues.length, 1);
+
+        const crossTenant = await saveBuilderTranslations({
+          businessId: businessB,
+          localeCode: "en",
+          entries: [{ sourceId: `${faqSectionIdA}:only-in-a`, fieldKey: "question", translatedText: "hacked" }],
+        });
+        assert.equal(crossTenant.saved.length, 0, "business B must never be able to translate business A's FAQ item, even by guessing the compound sourceId");
+        assert.equal(crossTenant.issues.length, 1);
+      } finally {
+        await deleteTestBusiness(businessA);
+        await deleteTestBusiness(businessB);
       }
     });
   },

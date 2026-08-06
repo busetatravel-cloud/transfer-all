@@ -16,13 +16,15 @@ import type { WorkspacePage, WorkspaceSnapshot } from "@/lib/builder/workspace-s
 import type { BlockKey, JsonRecord } from "@/lib/builder/types";
 import {
   getTranslatablePageFields,
+  getTranslatableRepeaters,
   getTranslatableSectionFields,
 } from "@/lib/builder/translatable-fields";
 
-export { getTranslatablePageFields, getTranslatableSectionFields };
+export { getTranslatablePageFields, getTranslatableRepeaters, getTranslatableSectionFields };
 
 // ============================================================
-// Website Builder Faz 13 — coklu dil.
+// Website Builder Faz 13 — coklu dil (Faz 15'te repeater/tekrarlanan-oge
+// destegiyle genisletildi).
 //
 // En dusuk riskli entegrasyon secildi: builder document'i (JSON) HICBIR
 // zaman locale-nested hale getirilmiyor (ör. content.title.en gibi bir
@@ -33,15 +35,27 @@ export { getTranslatablePageFields, getTranslatableSectionFields };
 // OLARAK service/vehicle/route/blog icin zaten kullanilan desenin aynisi
 // (bkz. lib/content-translations.ts), yeni migration gerekmez.
 //
-// Whitelist: yalnizca Hero/CTA/ServicesGrid'in metin alanlari cevrilebilir.
-// href alanlari ASLA bu listede degildir (URL'ler cevrilmez).
+// Faz 15: Hero Slider'in slaytlari, FAQ'in sorulari, Testimonials'in
+// yorumlari, Statistics'in istatistikleri, Trust Badges/Partners'in
+// rozetleri ve Contact Info'nun sosyal linkleri gibi TEKRARLANAN OGE
+// LISTELERI (repeater) icin, section'in KENDI sourceId'sinden AYRI, bilesik
+// bir sourceId kullanilir: `${sectionId}:${itemId}`. sourceId zaten opak bir
+// string oldugu icin (ör. "profile", "main" gibi section-disi degerler
+// halihazirda kullaniliyor) bu, hicbir sema/migration degisikligi
+// GEREKTIRMEZ — yalnizca findBuilderSource'un tanidigi bir KONVANSIYONDUR.
+//
+// Whitelist: yalnizca lib/builder/translatable-fields.ts'te acikca
+// listelenen alanlar cevrilebilir. href/embedUrl/imageSrc gibi alanlar ASLA
+// bu listede degildir (URL'ler/medya kaynaklari cevrilmez).
 // ============================================================
 
 const MAX_TRANSLATION_LENGTH = 240;
+const REPEATER_SOURCE_ID_SEPARATOR = ":";
 
 type BuilderSourceLookup =
   | { kind: "page"; page: WorkspacePage }
   | { kind: "section"; page: WorkspacePage; blockKey: BlockKey; content: JsonRecord }
+  | { kind: "repeaterItem"; page: WorkspacePage; blockKey: BlockKey; arrayField: string; item: JsonRecord }
   | null;
 
 function findBuilderSource(workspace: WorkspaceSnapshot, sourceId: string): BuilderSourceLookup {
@@ -54,6 +68,49 @@ function findBuilderSource(workspace: WorkspaceSnapshot, sourceId: string): Buil
     if (section) {
       return { kind: "section", page, blockKey: section.blockKey, content: section.content };
     }
+  }
+
+  // Bilesik sourceId: "<sectionId>:<itemId>" — bir repeater ogesine isaret
+  // eder. Once sourceId'nin AIT OLDUGU section'i bulmamiz gerekiyor; bunun
+  // icin ayirici karakterden ONCEKI kismi section id olarak deneriz (ayirici
+  // karakter section/item id'lerinin kendisinde (UUID/slug) hic gecmedigi
+  // icin bu bolme guvenlidir).
+  const separatorIndex = sourceId.indexOf(REPEATER_SOURCE_ID_SEPARATOR);
+  if (separatorIndex <= 0 || separatorIndex === sourceId.length - 1) {
+    return null;
+  }
+
+  const sectionId = sourceId.slice(0, separatorIndex);
+  const itemId = sourceId.slice(separatorIndex + 1);
+
+  for (const page of workspace.pages) {
+    const section = page.sections.find((entry) => entry.id === sectionId);
+    if (!section) {
+      continue;
+    }
+
+    const repeaters = getTranslatableRepeaters(String(section.blockKey));
+    for (const repeater of repeaters) {
+      const rawItems = (section.content as Record<string, unknown>)[repeater.arrayField];
+      if (!Array.isArray(rawItems)) {
+        continue;
+      }
+
+      const item = rawItems.find(
+        (entry): entry is JsonRecord =>
+          Boolean(entry) && typeof entry === "object" && !Array.isArray(entry) && (entry as JsonRecord).id === itemId,
+      );
+
+      if (item) {
+        return { kind: "repeaterItem", page, blockKey: section.blockKey, arrayField: repeater.arrayField, item };
+      }
+    }
+
+    // sectionId eslesti ama itemId hicbir repeater'da bulunamadi — baska bir
+    // page'de AYNI id'ye sahip farkli bir section olmasi teorik olarak
+    // mumkun oldugundan aramaya devam ETMEYIP direkt null donmek yerine
+    // digeri page'leri de kontrol etmeye devam ediyoruz (asagidaki dongu
+    // zaten devam ediyor).
   }
 
   return null;
@@ -143,7 +200,12 @@ export async function saveBuilderTranslations({
     }
 
     const allowedFields =
-      found.kind === "page" ? getTranslatablePageFields() : getTranslatableSectionFields(String(found.blockKey));
+      found.kind === "page"
+        ? getTranslatablePageFields()
+        : found.kind === "section"
+          ? getTranslatableSectionFields(String(found.blockKey))
+          : (getTranslatableRepeaters(String(found.blockKey)).find((repeater) => repeater.arrayField === found.arrayField)
+              ?.itemFields ?? []);
 
     if (!allowedFields.includes(fieldKey as TranslationFieldKey)) {
       issues.push({ sourceId, fieldKey, message: "Bu alan bu sayfa/blok icin cevrilebilir degil." });
@@ -153,7 +215,9 @@ export async function saveBuilderTranslations({
     const sourceText =
       found.kind === "page"
         ? String((found.page as unknown as Record<string, unknown>)[fieldKey] ?? "")
-        : String((found.content as Record<string, unknown>)[fieldKey] ?? "");
+        : found.kind === "section"
+          ? String((found.content as Record<string, unknown>)[fieldKey] ?? "")
+          : String((found.item as Record<string, unknown>)[fieldKey] ?? "");
 
     const translatedText = sanitizeTranslationText(entry.translatedText);
     const key = `${sourceId}:${fieldKey}`;
@@ -248,6 +312,12 @@ function readOverride(
 // alanlar degistirilir (href/style/diger her sey oldugu gibi kalir). Eksik
 // override -> default locale content'i degismeden kalir (fallback zaten
 // document'in kendisi oldugu icin ekstra bir islem gerekmez).
+//
+// Faz 15: duz alanlara ek olarak, bu blogun repeater (tekrarlanan oge listesi)
+// alanlari da islenir — her oge, section'in sourceId'si + kendi item.id'si
+// ile bilesik bir anahtarla (bkz. findBuilderSource) aranir. Bir repeater'i
+// olmayan blok icin bu adim tamamen atlanir (mevcut hero/cta/services_grid
+// davranisi BIREBIR AYNI kalir — referans esitligi dahil).
 export function applyBuilderSectionTranslations(
   blockKey: BlockKey,
   content: JsonRecord,
@@ -257,21 +327,63 @@ export function applyBuilderSectionTranslations(
   fallbackLocale: string,
 ): JsonRecord {
   const fields = getTranslatableSectionFields(String(blockKey));
+  const repeaters = getTranslatableRepeaters(String(blockKey));
 
   // Varsayilan (fallback) locale zaten document'in kendisi — override
-  // aramaya gerek yok, gereksiz Map lookup'u atlanir. Cevrilebilir alani
-  // olmayan bir blok icin de erken cik.
-  if (!fields.length || locale === fallbackLocale) {
+  // aramaya gerek yok, gereksiz Map lookup'u atlanir. Cevrilebilir hicbir
+  // alani/repeater'i olmayan bir blok icin de erken cik.
+  if ((!fields.length && !repeaters.length) || locale === fallbackLocale) {
     return content;
   }
 
   let changed = false;
-  const next: JsonRecord = { ...content };
+  let next: JsonRecord = content;
 
   for (const field of fields) {
     const override = readOverride(lookup, locale, fallbackLocale, sourceId, field);
     if (override !== null) {
+      if (!changed) {
+        next = { ...content };
+      }
       next[field] = override;
+      changed = true;
+    }
+  }
+
+  for (const repeater of repeaters) {
+    const rawItems = (next as Record<string, unknown>)[repeater.arrayField];
+    if (!Array.isArray(rawItems)) {
+      continue;
+    }
+
+    let itemsChanged = false;
+    const nextItems = rawItems.map((rawItem) => {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem) || typeof (rawItem as JsonRecord).id !== "string") {
+        return rawItem;
+      }
+
+      const item = rawItem as JsonRecord;
+      let nextItem = item;
+
+      for (const itemField of repeater.itemFields) {
+        const override = readOverride(lookup, locale, fallbackLocale, `${sourceId}${REPEATER_SOURCE_ID_SEPARATOR}${item.id}`, itemField);
+        if (override !== null) {
+          if (nextItem === item) {
+            nextItem = { ...item };
+          }
+          nextItem[itemField] = override;
+          itemsChanged = true;
+        }
+      }
+
+      return nextItem;
+    });
+
+    if (itemsChanged) {
+      if (!changed) {
+        next = { ...content };
+      }
+      next[repeater.arrayField] = nextItems;
       changed = true;
     }
   }

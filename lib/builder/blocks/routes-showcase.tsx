@@ -1,4 +1,4 @@
-import { BuilderCard, BuilderContainer, BuilderFallback, BuilderHeading, BuilderText } from "@/components/builder/primitives";
+import { BuilderCard, BuilderContainer, BuilderFallback, BuilderHeading, BuilderImage, BuilderText } from "@/components/builder/primitives";
 import { registerBlock } from "@/lib/builder/registry";
 import {
   asBlockKey,
@@ -13,31 +13,45 @@ import {
 import { readNumber, readString } from "@/lib/builder/validation";
 
 // ============================================================
-// ServicesGrid — referans implementasyon (Faz 3).
+// Routes Showcase — Faz 14.
 //
-// Bu blok, mevcut business_services CRUD'unu DEĞİŞTİRMEZ — yalnızca o
-// içeriğin bir sayfada NASIL gösterileceğini yönetir. Bu yüzden kendi
-// content'i yalnızca BAŞLIK/ETİKET metinlerini taşır; gerçek hizmet
-// listesi `data` prop'u üzerinden (bu bloğa ÖZEL, minimal bir görünüm
-// modeliyle) dışarıdan sağlanır — mevcut BusinessServiceRecord'a veya
-// başka bir bloğa bağımlılık YOKTUR, yalnızca kendi ihtiyaç duyduğu
-// alanları (id/title/description/href/imageSrc) tanımlar. Sayfa render
-// pipeline'ı (ileriki bir faz) gerçek veriyi bu şekle eşler.
+// ServicesGrid/VehicleShowcase ile AYNI mimari: content yalnızca
+// başlık/ayar metinleri taşır, GERÇEK rota listesi mevcut business_routes
+// CRUD'undan `data` prop'u üzerinden gelir.
+//
+// ÖNEMLİ KISIT (mevcut şema): business_routes tablosunda (bkz.
+// lib/business-panel.ts BusinessRouteRecord) ayrı başlangıç/bitiş,
+// fiyat veya süre/mesafe alanları YOKTUR — yalnızca id/slug/title/
+// description/sortOrder/active vardır (rota adı zaten "Havalimanı - Şehir
+// Merkezi" gibi tek bir title string'i olarak tutulur). Bu yüzden
+// `priceLabel`/`durationLabel` DATA alanları BİLEREK OPSİYONELDİR: gerçek
+// (public) adaptör bunları dolduramaz, blok bu durumda o satırları
+// sessizce GÖSTERMEZ. Yalnızca admin preview'daki ÖRNEK veri bu alanları
+// gösterir (bkz. vehicle-showcase.tsx'teki aynı notun genişletilmiş hali).
+//
+// Faz 15 denetimi: business_routes de business_vehicles ile birebir aynı
+// sekilde dogrulandi (bkz. vehicle-showcase.tsx'teki not) — hicbir
+// migration'da baslangic/bitis/fiyat/sure/mesafe sutunu eklenmemis, ve
+// `pricing_rules` tablosu buraya da FK ile bagli DEGIL (yalnizca serbest
+// metin origin/destination eslesmesi). Bu yuzden ayni gerekceyle
+// priceLabel/durationLabel gercek veriden ASLA uretilmiyor.
 // ============================================================
 
-export interface ServicesGridItem {
+export interface RouteShowcaseItem {
   id: string;
   title: string;
   description: string;
   href: string;
   imageSrc?: string;
+  priceLabel?: string;
+  durationLabel?: string;
 }
 
-export interface ServicesGridData {
-  items: ServicesGridItem[];
+export interface RouteShowcaseData {
+  items: RouteShowcaseItem[];
 }
 
-export interface ServicesGridContent extends JsonRecord {
+export interface RouteShowcaseContent extends JsonRecord {
   eyebrow: string;
   title: string;
   description: string;
@@ -46,41 +60,39 @@ export interface ServicesGridContent extends JsonRecord {
   maxItems: number;
 }
 
-export interface ServicesGridStyle extends JsonRecord {
+export interface RouteShowcaseStyle extends JsonRecord {
   columns: number;
 }
 
-const SERVICES_GRID_VARIANTS = [
-  { key: asVariantKey("grid"), label: "Izgara", description: "Eşit genişlikte kartlardan oluşan ızgara." },
+const ROUTE_SHOWCASE_VARIANTS = [
+  { key: asVariantKey("grid"), label: "Izgara", description: "Rota kartlarından oluşan ızgara." },
 ];
 
-function defaultServicesGridContent(): ServicesGridContent {
+function defaultRouteShowcaseContent(): RouteShowcaseContent {
   return {
-    eyebrow: "Hizmetler",
-    title: "Temel transfer hizmetleri",
-    description: "İşletmenizin sunduğu transfer hizmetleri.",
-    emptyStateTitle: "Hizmet yok",
-    emptyStateDescription: "Bu işletme için henüz hizmet kaydı girilmedi.",
+    eyebrow: "Popüler Rotalar",
+    title: "En çok tercih edilen transfer güzergahları",
+    description: "Sık kullanılan güzergahlarımızdan bazıları.",
+    emptyStateTitle: "Rota yok",
+    emptyStateDescription: "Bu işletme için henüz rota kaydı girilmedi.",
     maxItems: 6,
   };
 }
 
-function defaultServicesGridStyle(): ServicesGridStyle {
-  return {
-    columns: 3,
-  };
+function defaultRouteShowcaseStyle(): RouteShowcaseStyle {
+  return { columns: 3 };
 }
 
-function validateServicesGrid(
+function validateRouteShowcase(
   input: BlockValidationInput,
-): BuilderValidationResult<ServicesGridContent, ServicesGridStyle> {
+): BuilderValidationResult<RouteShowcaseContent, RouteShowcaseStyle> {
   const issues: BuilderValidationIssue[] = [];
   const rawContent = (input.content && typeof input.content === "object" ? input.content : {}) as Record<string, unknown>;
   const rawStyle = (input.style && typeof input.style === "object" ? input.style : {}) as Record<string, unknown>;
-  const fallbackContent = defaultServicesGridContent();
-  const fallbackStyle = defaultServicesGridStyle();
+  const fallbackContent = defaultRouteShowcaseContent();
+  const fallbackStyle = defaultRouteShowcaseStyle();
 
-  const content: ServicesGridContent = {
+  const content: RouteShowcaseContent = {
     eyebrow: readString(rawContent.eyebrow, fallbackContent.eyebrow, "content.eyebrow", issues, { maxLength: 60 }),
     title: readString(rawContent.title, fallbackContent.title, "content.title", issues, { maxLength: 140 }),
     description: readString(rawContent.description, fallbackContent.description, "content.description", issues, { maxLength: 240 }),
@@ -89,7 +101,7 @@ function validateServicesGrid(
     maxItems: readNumber(rawContent.maxItems, fallbackContent.maxItems, "content.maxItems", issues, { min: 1, max: 24 }),
   };
 
-  const style: ServicesGridStyle = {
+  const style: RouteShowcaseStyle = {
     columns: readNumber(rawStyle.columns, fallbackStyle.columns, "style.columns", issues, { min: 2, max: 4 }),
   };
 
@@ -102,10 +114,10 @@ const COLUMN_CLASS: Record<number, string> = {
   4: "md:grid-cols-2 xl:grid-cols-4",
 };
 
-function ServicesGridView({
+function RouteShowcaseView({
   section,
   data,
-}: BlockRendererProps<ServicesGridContent, ServicesGridStyle, ServicesGridData | undefined>) {
+}: BlockRendererProps<RouteShowcaseContent, RouteShowcaseStyle, RouteShowcaseData | undefined>) {
   const { content, style } = section;
   const items = (data?.items ?? []).slice(0, content.maxItems);
 
@@ -130,14 +142,21 @@ function ServicesGridView({
           <div className={`grid gap-4 ${COLUMN_CLASS[style.columns] ?? COLUMN_CLASS[3]}`}>
             {items.map((item) => (
               <a key={item.id} href={item.href} className="block rounded-[var(--ps-radius)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ps-primary)]">
-                <BuilderCard className="ps-card">
-                  <div className="flex flex-col" style={{ gap: "var(--ps-space-sm)" }}>
+                <BuilderCard className="ps-card overflow-hidden" padding="sm">
+                  {item.imageSrc ? <BuilderImage alt={item.title} className="-m-4 mb-0 rounded-none rounded-t-[inherit]" src={item.imageSrc} /> : null}
+                  <div className="flex flex-col p-4" style={{ gap: "var(--ps-space-sm)" }}>
                     <BuilderHeading level="h3" size="xl" className="ps-card-title">
                       {item.title}
                     </BuilderHeading>
                     <BuilderText size="sm" className="ps-card-text opacity-80">
                       {item.description}
                     </BuilderText>
+                    {item.priceLabel || item.durationLabel ? (
+                      <div className="flex flex-wrap gap-3 pt-1 opacity-70" style={{ fontSize: "var(--ps-font-size-sm)" }}>
+                        {item.priceLabel ? <span>{item.priceLabel}</span> : null}
+                        {item.durationLabel ? <span>{item.durationLabel}</span> : null}
+                      </div>
+                    ) : null}
                   </div>
                 </BuilderCard>
               </a>
@@ -151,18 +170,18 @@ function ServicesGridView({
   );
 }
 
-export const servicesGridBlock: BlockDefinition<ServicesGridContent, ServicesGridStyle, ServicesGridData | undefined> = {
-  key: asBlockKey("services_grid"),
+export const routesShowcaseBlock: BlockDefinition<RouteShowcaseContent, RouteShowcaseStyle, RouteShowcaseData | undefined> = {
+  key: asBlockKey("routes_showcase"),
   version: 1,
-  label: "Hizmetler Izgarası",
-  description: "İşletmenin hizmetlerini kart ızgarası olarak listeler.",
-  family: "services",
-  variants: SERVICES_GRID_VARIANTS,
-  defaultContent: defaultServicesGridContent,
-  defaultStyle: defaultServicesGridStyle,
-  validate: validateServicesGrid,
-  PreviewRenderer: ServicesGridView,
-  PublicRenderer: ServicesGridView,
+  label: "Rota Vitrini",
+  description: "İşletmenin popüler transfer rotalarını görsel kartlarla listeler.",
+  family: "routes",
+  variants: ROUTE_SHOWCASE_VARIANTS,
+  defaultContent: defaultRouteShowcaseContent,
+  defaultStyle: defaultRouteShowcaseStyle,
+  validate: validateRouteShowcase,
+  PreviewRenderer: RouteShowcaseView,
+  PublicRenderer: RouteShowcaseView,
   Fallback: BuilderFallback,
   seoImpact: {
     headingLevel: "h2",
@@ -176,10 +195,10 @@ export const servicesGridBlock: BlockDefinition<ServicesGridContent, ServicesGri
   },
   themeCompatibility: "all",
   dragDrop: {
-    icon: "grid",
-    paletteGroup: "Hizmetler",
+    icon: "map",
+    paletteGroup: "Rotalar",
     draggable: true,
   },
 };
 
-registerBlock(servicesGridBlock);
+registerBlock(routesShowcaseBlock);

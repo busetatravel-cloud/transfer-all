@@ -107,3 +107,101 @@ export function readHref(
   issues.push({ path, message: "Güvenli olmayan bağlantı şeması reddedildi." });
   return fallback;
 }
+
+// Görsel kaynakları için AYRI (readHref'ten daha dar) bir kural: yalnızca
+// http(s) ve site-içi göreli yollara izin verilir — `tel:`/`mailto:`/`#anchor`
+// gibi readHref için geçerli olan şemalar bir <img src> için anlamsızdır ve
+// kabul edilmez. Boş değer "görsel yok" durumu olarak kabul edilir (Fallback
+// UI devreye girer), hataya çevrilmez.
+const SAFE_IMAGE_SRC_PATTERN = /^(https?:\/\/|\/)/i;
+
+export function readImageSrc(
+  value: unknown,
+  fallback: string,
+  path: string,
+  issues: BuilderValidationIssue[],
+): string {
+  const candidate = readString(value, fallback, path, issues, { maxLength: 2048 });
+
+  if (candidate === "" || SAFE_IMAGE_SRC_PATTERN.test(candidate)) {
+    return candidate;
+  }
+
+  issues.push({ path, message: "Güvenli olmayan görsel kaynağı reddedildi." });
+  return fallback;
+}
+
+// Video embed URL whitelist — yalnızca bilinen, privacy-friendly gömme
+// noktaları kabul edilir. Bu bilerek bir "genel iframe src" doğrulayıcısı
+// DEĞİLDİR: keyfi bir domain'e iframe açmak (arbitrary embed) tek başına bir
+// XSS açığı olmasa bile, tenant'ın public sitesine üçüncü taraf bir sayfayı
+// clickjacking/tracking riskiyle gömme imkanı verir. Bilinmeyen host ->
+// reddedilip boş string ("video yok") döner, throw edilmez.
+const EMBED_HOST_ALLOWLIST = new Set([
+  "www.youtube.com",
+  "youtube.com",
+  "www.youtube-nocookie.com",
+  "youtube-nocookie.com",
+  "player.vimeo.com",
+]);
+
+export function readEmbedUrl(
+  value: unknown,
+  fallback: string,
+  path: string,
+  issues: BuilderValidationIssue[],
+): string {
+  const candidate = readString(value, fallback, path, issues, { maxLength: 2048 });
+
+  if (candidate === "") {
+    return candidate;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    issues.push({ path, message: "Geçersiz video bağlantısı, video kaldırıldı." });
+    return "";
+  }
+
+  if (parsed.protocol !== "https:" || !EMBED_HOST_ALLOWLIST.has(parsed.hostname.toLowerCase())) {
+    issues.push({ path, message: "Yalnızca YouTube veya Vimeo gömme bağlantılarına izin verilir." });
+    return "";
+  }
+
+  return candidate;
+}
+
+// Bloklar arası PAYLAŞILAN dizi (repeater) doğrulayıcısı — slaytlar, galeri
+// görselleri, SSS soruları, yorumlar, istatistikler ve rozetler gibi tüm
+// "öğe listesi" alanları AYNI iskeleti kullanır: dizi değilse fallback'e
+// düş, maxItems'ı aşan öğeler kırpılır, her öğe kendi mapItem() doğrulayıcısı
+// ile (kendi issues path'iyle) ayrı ayrı doğrulanır. `mapItem` throw ETMEMELİ
+// — her blok kendi alan bazlı readString/readNumber/... çağrılarını kullanıp
+// issues dizisine ekleme yapar, tıpkı content/style alanları gibi.
+export function readArray<T>(
+  value: unknown,
+  path: string,
+  issues: BuilderValidationIssue[],
+  options: {
+    maxItems: number;
+    mapItem: (raw: unknown, index: number, itemIssues: BuilderValidationIssue[]) => T;
+  },
+): T[] {
+  if (!Array.isArray(value)) {
+    if (value !== undefined) {
+      issues.push({ path, message: "Liste bekleniyor, boş liste kullanıldı." });
+    }
+    return [];
+  }
+
+  const overflow = value.length > options.maxItems;
+  const capped = value.slice(0, options.maxItems);
+
+  if (overflow) {
+    issues.push({ path, message: `En fazla ${options.maxItems} öğe olmalı, fazlalar kırpıldı.` });
+  }
+
+  return capped.map((raw, index) => options.mapItem(raw, index, issues));
+}

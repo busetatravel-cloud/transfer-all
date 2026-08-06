@@ -31,6 +31,18 @@ import type { PublishedTranslationRecord, TranslationDraftRecord } from "@/lib/c
 const HREF_FIELDS_BY_BLOCK: Record<string, string[]> = {
   hero: ["primaryButtonHref", "secondaryButtonHref"],
   cta: ["primaryButtonHref"],
+  booking_cta: ["primaryButtonHref"],
+};
+
+// Faz 14 — dizi (repeater) alanları içinde href taşıyan bloklar: her öğe
+// nesnesi içindeki belirtilen alanlar aynı kurala tabidir. HREF_FIELDS_BY_BLOCK
+// (düz üst seviye alanlar) ile AYRI tutulur çünkü içerik şekli farklıdır —
+// biri `content.field`, diğeri `content.arrayField[i].field`.
+const HREF_ARRAY_FIELDS_BY_BLOCK: Record<string, Array<{ arrayField: string; hrefFields: string[] }>> = {
+  hero_slider: [{ arrayField: "slides", hrefFields: ["primaryButtonHref", "secondaryButtonHref"] }],
+  trust_badges: [{ arrayField: "items", hrefFields: ["href"] }],
+  partners: [{ arrayField: "items", hrefFields: ["href"] }],
+  contact_info: [{ arrayField: "socialLinks", hrefFields: ["href"] }],
 };
 
 export function withLocaleIfInternal(href: string, locale: string): string {
@@ -46,17 +58,44 @@ export function withLocaleIfInternal(href: string, locale: string): string {
 
 export function localizeHrefFields(blockKey: string, content: JsonRecord, locale: string): JsonRecord {
   const fields = HREF_FIELDS_BY_BLOCK[blockKey];
+  const arrayFieldRules = HREF_ARRAY_FIELDS_BY_BLOCK[blockKey];
 
-  if (!fields) {
+  if (!fields && !arrayFieldRules) {
     return content;
   }
 
   const next: JsonRecord = { ...content };
 
-  for (const field of fields) {
-    const value = next[field];
-    if (typeof value === "string" && value) {
-      next[field] = withLocaleIfInternal(value, locale);
+  if (fields) {
+    for (const field of fields) {
+      const value = next[field];
+      if (typeof value === "string" && value) {
+        next[field] = withLocaleIfInternal(value, locale);
+      }
+    }
+  }
+
+  if (arrayFieldRules) {
+    for (const rule of arrayFieldRules) {
+      const rawItems = next[rule.arrayField];
+      if (!Array.isArray(rawItems)) {
+        continue;
+      }
+
+      next[rule.arrayField] = rawItems.map((rawItem) => {
+        if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+          return rawItem;
+        }
+
+        const item: JsonRecord = { ...(rawItem as JsonRecord) };
+        for (const hrefField of rule.hrefFields) {
+          const value = item[hrefField];
+          if (typeof value === "string" && value) {
+            item[hrefField] = withLocaleIfInternal(value, locale);
+          }
+        }
+        return item;
+      });
     }
   }
 

@@ -146,6 +146,55 @@ export function BuilderCard({
   );
 }
 
+// Faz 14 — görsel taşıyan yeni bloklar (Hero Slider/Gallery/Vehicle-Route
+// Showcase/Video poster/Partners) için paylaşılan görsel ilkesi.
+//
+// Bilerek `next/image` KULLANILMAZ: bu repo'da (app/, components/) hiçbir
+// yerde `next/image` kullanılmıyor — mevcut tek görsel deseni (bkz.
+// components/public-site-shell.tsx) düz `<img loading="lazy">`'dır. Next
+// Image'a geçmek `next.config.ts`'e remotePatterns eklemeyi gerektirir ki bu,
+// bu fazın kapsamı olan "registry/render/preview/inspector" katmanlarının
+// dışında, paylaşılan bir altyapı değişikliğidir. Bunun yerine CLS'i önlemek
+// için aynı "aspect-ratio sarmalayıcı + object-cover" deseni + `decoding=
+// "async"` ile lazy-loading burada da birebir korunur.
+export function BuilderImage({
+  src,
+  alt,
+  aspectRatio = "16/9",
+  className = "",
+  fit = "cover",
+}: {
+  src: string;
+  alt: string;
+  aspectRatio?: string;
+  className?: string;
+  fit?: "cover" | "contain";
+}) {
+  if (!src.trim()) {
+    return (
+      <div
+        aria-hidden="true"
+        className={`flex items-center justify-center border border-dashed border-[color-mix(in_srgb,var(--ps-secondary)_35%,transparent)] bg-[var(--ps-surface)] ${className}`}
+        style={{ aspectRatio }}
+      >
+        <span style={{ fontSize: "var(--ps-font-size-sm)", opacity: 0.5 }}>Görsel yok</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`overflow-hidden ${className}`} style={{ aspectRatio }}>
+      <img
+        alt={alt}
+        className={`h-full w-full ${fit === "contain" ? "object-contain" : "object-cover"}`}
+        decoding="async"
+        loading="lazy"
+        src={src}
+      />
+    </div>
+  );
+}
+
 // Bir bloğun içeriği geçersiz/eksik geldiğinde (ör. henüz hiç doldurulmamış
 // yeni bir section) gösterilecek, tema token'larıyla uyumlu boş durum.
 export function BuilderFallback({ reason }: { reason?: string }) {

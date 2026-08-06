@@ -26,11 +26,20 @@ import {
 } from "@/lib/builder/workspace-state";
 import type { EditableSection } from "@/lib/builder/editable-section";
 import { asBlockKey, type JsonRecord } from "@/lib/builder/types";
+import type {
+  BadgeItem,
+  FaqItem,
+  HeroSlide,
+  SocialLink,
+  StatItem,
+  TestimonialItem,
+} from "@/lib/builder/blocks/index";
 import type { PreviewMode } from "@/components/builder/responsive-preview-frame";
 import { SUPPORTED_LANGUAGES } from "@/lib/languages";
 import {
   BUILDER_FIELD_LABELS,
   getTranslatablePageFields,
+  getTranslatableRepeaters,
   getTranslatableSectionFields,
 } from "@/lib/builder/translatable-fields";
 import "@/lib/builder/templates/index";
@@ -1347,6 +1356,231 @@ function SectionInspector({
             />
           </div>
         ) : null}
+
+        {section.blockKey === "hero_slider" ? (
+          <ArrayEditor<HeroSlide>
+            label="Slaytlar"
+            items={arrayValue<HeroSlide>(section.content, "slides")}
+            maxItems={8}
+            onChange={(next) => onContentChange(section.id, { slides: next })}
+            itemLabel={(item, index) => item.title || `Slayt ${index + 1}`}
+            createItem={() => ({
+              id: `slide-${Date.now()}`,
+              title: "",
+              subtitle: "",
+              description: "",
+              desktopImageSrc: "",
+              mobileImageSrc: "",
+              primaryButtonText: "",
+              primaryButtonHref: "/quote",
+              secondaryButtonText: "",
+              secondaryButtonHref: "/contact",
+              align: "left",
+              overlay: "dark",
+              active: true,
+              order: 0,
+            })}
+            renderItem={(item, update) => (
+              <>
+                <TextField label="Başlık" onChange={(value) => update({ title: value })} value={item.title} />
+                <TextField label="Alt başlık" onChange={(value) => update({ subtitle: value })} value={item.subtitle} />
+                <TextAreaField label="Açıklama" onChange={(value) => update({ description: value })} rows={2} value={item.description} />
+                <TextField label="Masaüstü görsel URL" onChange={(value) => update({ desktopImageSrc: value })} value={item.desktopImageSrc} />
+                <TextField label="Mobil görsel URL" onChange={(value) => update({ mobileImageSrc: value })} value={item.mobileImageSrc} />
+                <TextField label="Birincil buton metni" onChange={(value) => update({ primaryButtonText: value })} value={item.primaryButtonText} />
+                <TextField label="Birincil buton href" onChange={(value) => update({ primaryButtonHref: value })} value={item.primaryButtonHref} />
+                <TextField label="İkincil buton metni" onChange={(value) => update({ secondaryButtonText: value })} value={item.secondaryButtonText} />
+                <TextField label="İkincil buton href" onChange={(value) => update({ secondaryButtonHref: value })} value={item.secondaryButtonHref} />
+                <SelectField
+                  label="Hizalama"
+                  onChange={(value) => update({ align: value as HeroSlide["align"] })}
+                  options={[{ value: "left", label: "Sol" }, { value: "center", label: "Orta" }]}
+                  value={item.align}
+                />
+                <SelectField
+                  label="Overlay"
+                  onChange={(value) => update({ overlay: value as HeroSlide["overlay"] })}
+                  options={[{ value: "none", label: "Yok" }, { value: "light", label: "Açık" }, { value: "dark", label: "Koyu" }]}
+                  value={item.overlay}
+                />
+                <CheckboxField label="Aktif" checked={item.active} onChange={(value) => update({ active: value })} />
+              </>
+            )}
+          />
+        ) : null}
+
+        {section.blockKey === "gallery" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextAreaField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} rows={3} value={textValue(section.content, "title")} />
+            <TextAreaField label="Description" onChange={(value) => onContentChange(section.id, { description: value })} rows={3} value={textValue(section.content, "description")} />
+            <NumberField label="Max items" max={30} min={1} onChange={(value) => onContentChange(section.id, { maxItems: value })} value={numberValue(section.content, "maxItems", 12)} />
+            <TextField label="Empty title" onChange={(value) => onContentChange(section.id, { emptyStateTitle: value })} value={textValue(section.content, "emptyStateTitle")} />
+            <TextAreaField label="Empty description" onChange={(value) => onContentChange(section.id, { emptyStateDescription: value })} rows={2} value={textValue(section.content, "emptyStateDescription")} />
+          </div>
+        ) : null}
+
+        {section.blockKey === "faq" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextAreaField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} rows={3} value={textValue(section.content, "title")} />
+            <TextAreaField label="Description" onChange={(value) => onContentChange(section.id, { description: value })} rows={3} value={textValue(section.content, "description")} />
+            <ArrayEditor<FaqItem>
+              label="Sorular"
+              items={arrayValue<FaqItem>(section.content, "items")}
+              maxItems={20}
+              onChange={(next) => onContentChange(section.id, { items: next })}
+              itemLabel={(item, index) => item.question || `Soru ${index + 1}`}
+              createItem={() => ({ id: `faq-${Date.now()}`, question: "", answer: "", active: true, order: 0 })}
+              renderItem={(item, update) => (
+                <>
+                  <TextField label="Soru" onChange={(value) => update({ question: value })} value={item.question} />
+                  <TextAreaField label="Cevap" onChange={(value) => update({ answer: value })} rows={3} value={item.answer} />
+                  <CheckboxField label="Aktif" checked={item.active} onChange={(value) => update({ active: value })} />
+                </>
+              )}
+            />
+          </div>
+        ) : null}
+
+        {section.blockKey === "testimonials" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextAreaField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} rows={3} value={textValue(section.content, "title")} />
+            <ArrayEditor<TestimonialItem>
+              label="Yorumlar"
+              items={arrayValue<TestimonialItem>(section.content, "items")}
+              maxItems={12}
+              onChange={(next) => onContentChange(section.id, { items: next })}
+              itemLabel={(item, index) => item.name || `Yorum ${index + 1}`}
+              createItem={() => ({ id: `review-${Date.now()}`, name: "", quote: "", rating: 5, location: "", avatarSrc: "", date: "", active: true, order: 0 })}
+              renderItem={(item, update) => (
+                <>
+                  <TextField label="İsim" onChange={(value) => update({ name: value })} value={item.name} />
+                  <TextAreaField label="Yorum" onChange={(value) => update({ quote: value })} rows={3} value={item.quote} />
+                  <NumberField label="Puan (1-5)" max={5} min={1} onChange={(value) => update({ rating: value })} value={item.rating} />
+                  <TextField label="Konum" onChange={(value) => update({ location: value })} value={item.location} />
+                  <TextField label="Avatar URL" onChange={(value) => update({ avatarSrc: value })} value={item.avatarSrc} />
+                  <CheckboxField label="Aktif" checked={item.active} onChange={(value) => update({ active: value })} />
+                </>
+              )}
+            />
+          </div>
+        ) : null}
+
+        {section.blockKey === "statistics" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextAreaField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} rows={2} value={textValue(section.content, "title")} />
+            <CheckboxField
+              label="Kaydırınca sayaç animasyonu (ileride eklenecek)"
+              checked={booleanValue(section.content, "animateOnScroll")}
+              onChange={(value) => onContentChange(section.id, { animateOnScroll: value })}
+            />
+            <ArrayEditor<StatItem>
+              label="İstatistikler"
+              items={arrayValue<StatItem>(section.content, "items")}
+              maxItems={8}
+              onChange={(next) => onContentChange(section.id, { items: next })}
+              itemLabel={(item, index) => item.label || `İstatistik ${index + 1}`}
+              createItem={() => ({ id: `stat-${Date.now()}`, value: 0, suffix: "", label: "", order: 0, active: true })}
+              renderItem={(item, update) => (
+                <>
+                  <NumberField label="Değer" onChange={(value) => update({ value })} value={item.value} />
+                  <TextField label="Sonek (ör. +)" onChange={(value) => update({ suffix: value })} value={item.suffix} />
+                  <TextField label="Etiket" onChange={(value) => update({ label: value })} value={item.label} />
+                  <CheckboxField label="Aktif" checked={item.active} onChange={(value) => update({ active: value })} />
+                </>
+              )}
+            />
+          </div>
+        ) : null}
+
+        {section.blockKey === "video" ? (
+          <div className="grid gap-3">
+            <TextField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} value={textValue(section.content, "title")} />
+            <TextAreaField label="Description" onChange={(value) => onContentChange(section.id, { description: value })} rows={3} value={textValue(section.content, "description")} />
+            <TextField label="YouTube/Vimeo embed URL" onChange={(value) => onContentChange(section.id, { embedUrl: value })} value={textValue(section.content, "embedUrl")} />
+            <TextField label="Poster görsel URL" onChange={(value) => onContentChange(section.id, { posterImage: value })} value={textValue(section.content, "posterImage")} />
+          </div>
+        ) : null}
+
+        {section.blockKey === "trust_badges" || section.blockKey === "partners" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} value={textValue(section.content, "title")} />
+            <ArrayEditor<BadgeItem>
+              label={section.blockKey === "partners" ? "İş ortakları" : "Rozetler"}
+              items={arrayValue<BadgeItem>(section.content, "items")}
+              maxItems={16}
+              onChange={(next) => onContentChange(section.id, { items: next })}
+              itemLabel={(item, index) => item.label || `Logo ${index + 1}`}
+              createItem={() => ({ id: `badge-${Date.now()}`, label: "", logoSrc: "", href: "", altText: "", active: true, order: 0 })}
+              renderItem={(item, update) => (
+                <>
+                  <TextField label="Etiket" onChange={(value) => update({ label: value })} value={item.label} />
+                  <TextField label="Logo URL" onChange={(value) => update({ logoSrc: value })} value={item.logoSrc} />
+                  <TextField label="Bağlantı (opsiyonel)" onChange={(value) => update({ href: value })} value={item.href} />
+                  <TextField label="Alt metin" onChange={(value) => update({ altText: value })} value={item.altText} />
+                  <CheckboxField label="Aktif" checked={item.active} onChange={(value) => update({ active: value })} />
+                </>
+              )}
+            />
+          </div>
+        ) : null}
+
+        {section.blockKey === "vehicle_showcase" || section.blockKey === "routes_showcase" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextAreaField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} rows={3} value={textValue(section.content, "title")} />
+            <TextAreaField label="Description" onChange={(value) => onContentChange(section.id, { description: value })} rows={3} value={textValue(section.content, "description")} />
+            <TextField label="Empty title" onChange={(value) => onContentChange(section.id, { emptyStateTitle: value })} value={textValue(section.content, "emptyStateTitle")} />
+            <TextAreaField label="Empty description" onChange={(value) => onContentChange(section.id, { emptyStateDescription: value })} rows={2} value={textValue(section.content, "emptyStateDescription")} />
+            <NumberField label="Max items" max={24} min={1} onChange={(value) => onContentChange(section.id, { maxItems: value })} value={numberValue(section.content, "maxItems", 6)} />
+          </div>
+        ) : null}
+
+        {section.blockKey === "booking_cta" ? (
+          <div className="grid gap-3">
+            <TextAreaField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} rows={2} value={textValue(section.content, "title")} />
+            <TextAreaField label="Description" onChange={(value) => onContentChange(section.id, { description: value })} rows={3} value={textValue(section.content, "description")} />
+            <TextField label="Birincil buton metni" onChange={(value) => onContentChange(section.id, { primaryButtonText: value })} value={textValue(section.content, "primaryButtonText")} />
+            <TextField label="Birincil buton href" onChange={(value) => onContentChange(section.id, { primaryButtonHref: value })} value={textValue(section.content, "primaryButtonHref")} />
+            <CheckboxField label="WhatsApp butonu göster" checked={booleanValue(section.content, "showWhatsapp", true)} onChange={(value) => onContentChange(section.id, { showWhatsapp: value })} />
+            <TextField label="WhatsApp buton metni" onChange={(value) => onContentChange(section.id, { whatsappButtonText: value })} value={textValue(section.content, "whatsappButtonText")} />
+            <CheckboxField label="Telefon butonu göster" checked={booleanValue(section.content, "showPhone", true)} onChange={(value) => onContentChange(section.id, { showPhone: value })} />
+            <TextField label="Telefon buton metni" onChange={(value) => onContentChange(section.id, { phoneButtonText: value })} value={textValue(section.content, "phoneButtonText")} />
+            <p className="text-xs text-slate-400">WhatsApp/telefon numaraları işletme profilinden otomatik alınır, burada düzenlenmez.</p>
+          </div>
+        ) : null}
+
+        {section.blockKey === "contact_info" ? (
+          <div className="grid gap-3">
+            <TextField label="Eyebrow" onChange={(value) => onContentChange(section.id, { eyebrow: value })} value={textValue(section.content, "eyebrow")} />
+            <TextField label="Title" onChange={(value) => onContentChange(section.id, { title: value })} value={textValue(section.content, "title")} />
+            <TextAreaField label="Adres" onChange={(value) => onContentChange(section.id, { address: value })} rows={2} value={textValue(section.content, "address")} />
+            <TextAreaField label="Çalışma saatleri" onChange={(value) => onContentChange(section.id, { hours: value })} rows={2} value={textValue(section.content, "hours")} />
+            <CheckboxField label="Telefon göster" checked={booleanValue(section.content, "showPhone", true)} onChange={(value) => onContentChange(section.id, { showPhone: value })} />
+            <CheckboxField label="WhatsApp göster" checked={booleanValue(section.content, "showWhatsapp", true)} onChange={(value) => onContentChange(section.id, { showWhatsapp: value })} />
+            <CheckboxField label="E-posta göster" checked={booleanValue(section.content, "showEmail", true)} onChange={(value) => onContentChange(section.id, { showEmail: value })} />
+            <p className="text-xs text-slate-400">Telefon/WhatsApp/e-posta değerleri işletme profilinden otomatik alınır.</p>
+            <ArrayEditor<SocialLink>
+              label="Sosyal medya bağlantıları"
+              items={arrayValue<SocialLink>(section.content, "socialLinks")}
+              maxItems={8}
+              onChange={(next) => onContentChange(section.id, { socialLinks: next })}
+              itemLabel={(item, index) => item.platform || `Bağlantı ${index + 1}`}
+              createItem={() => ({ id: `social-${Date.now()}`, platform: "", href: "", active: true, order: 0 })}
+              renderItem={(item, update) => (
+                <>
+                  <TextField label="Platform" onChange={(value) => update({ platform: value })} value={item.platform} />
+                  <TextField label="Bağlantı" onChange={(value) => update({ href: value })} value={item.href} />
+                  <CheckboxField label="Aktif" checked={item.active} onChange={(value) => update({ active: value })} />
+                </>
+              )}
+            />
+          </div>
+        ) : null}
       </InspectorGroup>
 
       <InspectorGroup title="Style">
@@ -1398,6 +1632,124 @@ function SectionInspector({
             value={textValue(section.style, "tone", "brand")}
           />
         ) : null}
+
+        {section.blockKey === "hero_slider" ? (
+          <div className="grid gap-3">
+            <CheckboxField label="Otomatik oynat" checked={booleanValue(section.style, "autoplay", true)} onChange={(value) => onStyleChange(section.id, { autoplay: value })} />
+            <NumberField label="Süre (ms)" max={20000} min={1500} onChange={(value) => onStyleChange(section.id, { durationMs: value })} value={numberValue(section.style, "durationMs", 6000)} />
+            <CheckboxField label="Üzerine gelince duraklat" checked={booleanValue(section.style, "pauseOnHover", true)} onChange={(value) => onStyleChange(section.id, { pauseOnHover: value })} />
+            <SelectField
+              label="Geçiş"
+              onChange={(value) => onStyleChange(section.id, { transition: value })}
+              options={[{ value: "fade", label: "Solma" }, { value: "slide", label: "Kaydırma" }]}
+              value={textValue(section.style, "transition", "fade")}
+            />
+            <CheckboxField label="Göstergeleri (noktalar) göster" checked={booleanValue(section.style, "showIndicators", true)} onChange={(value) => onStyleChange(section.id, { showIndicators: value })} />
+            <CheckboxField label="Okları göster" checked={booleanValue(section.style, "showArrows", true)} onChange={(value) => onStyleChange(section.id, { showArrows: value })} />
+            <CheckboxField label="Sona gelince başa dön" checked={booleanValue(section.style, "loop", true)} onChange={(value) => onStyleChange(section.id, { loop: value })} />
+          </div>
+        ) : null}
+
+        {section.blockKey === "gallery" ? (
+          <div className="grid gap-3">
+            <SelectField
+              label="Masaüstü sütun"
+              onChange={(value) => onStyleChange(section.id, { columns: Number(value) })}
+              options={[{ value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }]}
+              value={String(numberValue(section.style, "columns", 3))}
+            />
+            <SelectField
+              label="Mobil sütun"
+              onChange={(value) => onStyleChange(section.id, { mobileColumns: Number(value) })}
+              options={[{ value: "1", label: "1" }, { value: "2", label: "2" }]}
+              value={String(numberValue(section.style, "mobileColumns", 1))}
+            />
+            <CheckboxField label="Masonry benzeri görünüm" checked={booleanValue(section.style, "masonry")} onChange={(value) => onStyleChange(section.id, { masonry: value })} />
+          </div>
+        ) : null}
+
+        {section.blockKey === "faq" ? (
+          <SelectField
+            label="Düzen"
+            onChange={(value) => onStyleChange(section.id, { layout: value })}
+            options={[{ value: "single", label: "Tek kolon" }, { value: "two-column", label: "İki kolon" }]}
+            value={textValue(section.style, "layout", "single")}
+          />
+        ) : null}
+
+        {section.blockKey === "testimonials" ? (
+          <SelectField
+            label="Sütun"
+            onChange={(value) => onStyleChange(section.id, { columns: Number(value) })}
+            options={[{ value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }]}
+            value={String(numberValue(section.style, "columns", 3))}
+          />
+        ) : null}
+
+        {section.blockKey === "statistics" ? (
+          <div className="grid gap-3">
+            <SelectField
+              label="Sütun"
+              onChange={(value) => onStyleChange(section.id, { columns: Number(value) })}
+              options={[{ value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }, { value: "5", label: "5" }]}
+              value={String(numberValue(section.style, "columns", 4))}
+            />
+            <SelectField
+              label="Ton"
+              onChange={(value) => onStyleChange(section.id, { tone: value })}
+              options={[{ value: "surface", label: "Yüzey" }, { value: "brand", label: "Marka" }]}
+              value={textValue(section.style, "tone", "surface")}
+            />
+          </div>
+        ) : null}
+
+        {section.blockKey === "video" ? (
+          <div className="grid gap-3">
+            <SelectField
+              label="En-boy oranı"
+              onChange={(value) => onStyleChange(section.id, { aspectRatio: value })}
+              options={[{ value: "16/9", label: "16:9" }, { value: "9/16", label: "9:16" }, { value: "4/3", label: "4:3" }]}
+              value={textValue(section.style, "aspectRatio", "16/9")}
+            />
+            <CheckboxField label="Oynatınca otomatik başlat (sessiz)" checked={booleanValue(section.style, "autoplay")} onChange={(value) => onStyleChange(section.id, { autoplay: value })} />
+          </div>
+        ) : null}
+
+        {(section.blockKey === "trust_badges" || section.blockKey === "partners") ? (
+          <SelectField
+            label="Görünüm"
+            onChange={(value) => onStyleChange(section.id, { mode: value })}
+            options={[{ value: "color", label: "Renkli" }, { value: "monochrome", label: "Tek renk" }]}
+            value={textValue(section.style, "mode", "color")}
+          />
+        ) : null}
+
+        {(section.blockKey === "vehicle_showcase" || section.blockKey === "routes_showcase") ? (
+          <SelectField
+            label="Sütun"
+            onChange={(value) => onStyleChange(section.id, { columns: Number(value) })}
+            options={[{ value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }]}
+            value={String(numberValue(section.style, "columns", 3))}
+          />
+        ) : null}
+
+        {section.blockKey === "booking_cta" ? (
+          <SelectField
+            label="Ton"
+            onChange={(value) => onStyleChange(section.id, { tone: value })}
+            options={[{ value: "brand", label: "Brand" }, { value: "surface", label: "Surface" }]}
+            value={textValue(section.style, "tone", "brand")}
+          />
+        ) : null}
+
+        {section.blockKey === "contact_info" ? (
+          <SelectField
+            label="Düzen"
+            onChange={(value) => onStyleChange(section.id, { layout: value })}
+            options={[{ value: "stacked", label: "Alt alta" }, { value: "columns", label: "İki kolon" }]}
+            value={textValue(section.style, "layout", "stacked")}
+          />
+        ) : null}
       </InspectorGroup>
 
       <TranslationPanel
@@ -1406,6 +1758,7 @@ function SectionInspector({
         defaultValues={Object.fromEntries(
           getTranslatableSectionFields(String(section.blockKey)).map((field) => [field, textValue(section.content, field)]),
         )}
+        repeaters={buildTranslationRepeaters(String(section.blockKey), section.content)}
       />
 
       <PanelCard eyebrow="Page" title="Hizli aksiyonlar" description="Sayfa ayarlarina gecmek veya secimi temizlemek icin.">
@@ -1565,17 +1918,39 @@ function PageSettingsInspector({
 // kaydedilir (mevcut "Taslagi Kaydet" akisindan BAGIMSIZ). Bos birakilan
 // bir alan, o dil icin cevirinin silinmesi/olmamasi anlamina gelir ve
 // public render varsayilan dile duser.
+type TranslationRepeaterItemDescriptor = {
+  id: string;
+  label: string;
+  defaultValues: Record<string, string>;
+};
+
+type TranslationRepeaterDescriptor = {
+  arrayField: string;
+  itemFields: readonly string[];
+  items: TranslationRepeaterItemDescriptor[];
+};
+
+// Faz 15 — TranslationPanel, duz alanlarin (section/page'in KENDI content'i)
+// yaninda REPEATER (tekrarlanan oge listesi — Hero Slider'in slaytlari, FAQ'in
+// sorulari, Testimonials'in yorumlari, Trust Badges/Partners'in rozetleri,
+// Contact Info'nun sosyal linkleri vb.) alanlarini da yonetir. Her repeater
+// ogesi, `${sourceId}:${item.id}` bilesik sourceId'siyle KENDI cevirisine
+// sahiptir (bkz. lib/builder/translations.ts findBuilderSource) — ayni
+// section icindeki TUM alan/oge cevirileri TEK bir "Kaydet" ile, tek bir PUT
+// cagrisinda kaydedilir.
 function TranslationPanel({
   sourceId,
   fields,
   defaultValues,
+  repeaters = [],
 }: {
   sourceId: string;
   fields: readonly string[];
   defaultValues: Record<string, string>;
+  repeaters?: TranslationRepeaterDescriptor[];
 }) {
   const [locale, setLocale] = useState("en");
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [overridesBySourceId, setOverridesBySourceId] = useState<Record<string, Record<string, string>>>({});
   const [loadState, setLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -1607,13 +1982,13 @@ function TranslationPanel({
           return;
         }
 
-        const next: Record<string, string> = {};
+        const next: Record<string, Record<string, string>> = {};
         for (const entry of payload.entries) {
-          if (entry.sourceId === sourceId) {
-            next[entry.fieldKey] = entry.translatedText;
+          if (entry.sourceId === sourceId || entry.sourceId.startsWith(`${sourceId}:`)) {
+            next[entry.sourceId] = { ...next[entry.sourceId], [entry.fieldKey]: entry.translatedText };
           }
         }
-        setOverrides(next);
+        setOverridesBySourceId(next);
         setLoadState("ready");
       } catch {
         if (!cancelled) {
@@ -1629,8 +2004,11 @@ function TranslationPanel({
     };
   }, [locale, sourceId]);
 
-  function handleFieldChange(fieldKey: string, value: string) {
-    setOverrides((prev) => ({ ...prev, [fieldKey]: value }));
+  function handleFieldChange(entrySourceId: string, fieldKey: string, value: string) {
+    setOverridesBySourceId((prev) => ({
+      ...prev,
+      [entrySourceId]: { ...prev[entrySourceId], [fieldKey]: value },
+    }));
   }
 
   async function handleSave() {
@@ -1643,11 +2021,23 @@ function TranslationPanel({
     setSaveMessage(null);
 
     try {
-      const entries = fields.map((fieldKey) => ({
-        sourceId,
-        fieldKey,
-        translatedText: overrides[fieldKey] ?? "",
-      }));
+      const entries = [
+        ...fields.map((fieldKey) => ({
+          sourceId,
+          fieldKey,
+          translatedText: overridesBySourceId[sourceId]?.[fieldKey] ?? "",
+        })),
+        ...repeaters.flatMap((repeater) =>
+          repeater.items.flatMap((item) => {
+            const itemSourceId = `${sourceId}:${item.id}`;
+            return repeater.itemFields.map((fieldKey) => ({
+              sourceId: itemSourceId,
+              fieldKey,
+              translatedText: overridesBySourceId[itemSourceId]?.[fieldKey] ?? "",
+            }));
+          }),
+        ),
+      ];
 
       const response = await fetch("/api/business/site-builder/translations", {
         method: "PUT",
@@ -1676,7 +2066,7 @@ function TranslationPanel({
     }
   }
 
-  if (fields.length === 0) {
+  if (fields.length === 0 && repeaters.every((repeater) => repeater.items.length === 0)) {
     return null;
   }
 
@@ -1697,14 +2087,14 @@ function TranslationPanel({
 
       <div className="grid gap-4">
         {fields.map((fieldKey) => {
-          const value = overrides[fieldKey] ?? "";
+          const value = overridesBySourceId[sourceId]?.[fieldKey] ?? "";
           const hasOverride = value.trim().length > 0;
 
           return (
             <div key={fieldKey} className="grid gap-1">
               <TextAreaField
                 label={`${BUILDER_FIELD_LABELS[fieldKey as keyof typeof BUILDER_FIELD_LABELS] ?? fieldKey} — ${locale}`}
-                onChange={(next) => handleFieldChange(fieldKey, next)}
+                onChange={(next) => handleFieldChange(sourceId, fieldKey, next)}
                 rows={2}
                 value={value}
               />
@@ -1720,6 +2110,44 @@ function TranslationPanel({
           );
         })}
       </div>
+
+      {repeaters.map((repeater) =>
+        repeater.items.length === 0 ? null : (
+          <div className="grid gap-3 border-t border-slate-200 pt-4" key={repeater.arrayField}>
+            {repeater.items.map((item) => {
+              const itemSourceId = `${sourceId}:${item.id}`;
+              return (
+                <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3" key={item.id}>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
+                  {repeater.itemFields.map((fieldKey) => {
+                    const value = overridesBySourceId[itemSourceId]?.[fieldKey] ?? "";
+                    const hasOverride = value.trim().length > 0;
+
+                    return (
+                      <div key={fieldKey} className="grid gap-1">
+                        <TextAreaField
+                          label={`${BUILDER_FIELD_LABELS[fieldKey as keyof typeof BUILDER_FIELD_LABELS] ?? fieldKey} — ${locale}`}
+                          onChange={(next) => handleFieldChange(itemSourceId, fieldKey, next)}
+                          rows={2}
+                          value={value}
+                        />
+                        <p className="text-xs leading-5 text-slate-500">
+                          Varsayılan dil içeriği: {item.defaultValues[fieldKey]?.trim() || "—"}
+                        </p>
+                        {!hasOverride ? (
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-600">
+                            Bu dilde çeviri yok — ziyaretçiye varsayılan dil gösterilir
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ),
+      )}
 
       <div className="mt-1 flex flex-wrap items-center gap-3">
         <SectionActionButton
@@ -1894,6 +2322,104 @@ function SelectField({
   );
 }
 
+function CheckboxField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-slate-700">
+      <input
+        checked={checked}
+        className="h-4 w-4 rounded border-slate-300"
+        onChange={(event) => onChange(event.target.checked)}
+        type="checkbox"
+      />
+      {label}
+    </label>
+  );
+}
+
+// Faz 14 — slaytlar/galeri/SSS/yorumlar/istatistikler/rozetler gibi TÜM
+// "öğe listesi" (repeater) alanları için PAYLAŞILAN inspector düzenleyicisi.
+// Ekle/sil/yukarı-aşağı taşı aksiyonları tek bir yerde yazılır; her blok
+// yalnızca `renderItem`'ı (kendi alanlarını) ve `createItem`'ı (varsayılan
+// yeni öğe) sağlar. Taşıma işlemi `order` alanını da yeni sıraya göre
+// günceller — bu yüzden T, en az `id`/`order` taşımalıdır.
+function ArrayEditor<T extends JsonRecord & { id: string; order: number }>({
+  label,
+  items,
+  onChange,
+  createItem,
+  renderItem,
+  itemLabel,
+  maxItems,
+}: {
+  label: string;
+  items: T[];
+  onChange: (next: T[]) => void;
+  createItem: () => T;
+  renderItem: (item: T, update: (patch: Partial<T>) => void, index: number) => ReactNode;
+  itemLabel: (item: T, index: number) => string;
+  maxItems: number;
+}) {
+  function moveItem(index: number, direction: "up" | "down") {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) {
+      return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(index, 1);
+    next.splice(targetIndex, 0, moved);
+    onChange(next.map((item, i) => ({ ...item, order: i })));
+  }
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</span>
+        <SectionActionButton
+          label="Ekle"
+          disabled={items.length >= maxItems}
+          onClick={() => onChange([...items, { ...createItem(), order: items.length }])}
+        />
+      </div>
+      {items.length === 0 ? <p className="text-xs text-slate-400">Henüz öğe eklenmedi.</p> : null}
+      {items.map((item, index) => (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={item.id}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="truncate text-xs font-semibold text-slate-600">{itemLabel(item, index)}</span>
+            <div className="flex shrink-0 gap-1">
+              <SectionActionButton label="↑" disabled={index === 0} onClick={() => moveItem(index, "up")} />
+              <SectionActionButton label="↓" disabled={index === items.length - 1} onClick={() => moveItem(index, "down")} />
+              <SectionActionButton
+                label="Sil"
+                tone="destructive"
+                onClick={() => onChange(items.filter((_, i) => i !== index).map((entry, i) => ({ ...entry, order: i })))}
+              />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {renderItem(
+              item,
+              (patch) => {
+                const next = [...items];
+                next[index] = { ...item, ...patch };
+                onChange(next);
+              },
+              index,
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Badge({ children }: { children: ReactNode }) {
   return (
     <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
@@ -1967,4 +2493,48 @@ function textValue(record: JsonRecord, key: string, fallback = "") {
 function numberValue(record: JsonRecord, key: string, fallback = 0) {
   const value = record[key];
   return typeof value === "number" ? value : fallback;
+}
+
+function booleanValue(record: JsonRecord, key: string, fallback = false) {
+  const value = record[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function arrayValue<T>(record: JsonRecord, key: string): T[] {
+  const value = record[key];
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+// Faz 15 — bir section'in blockKey'ine gore, TranslationPanel'in ihtiyac
+// duydugu repeater (tekrarlanan oge listesi) tanimlarini uretir. Whitelist'in
+// TEK kaynagi hala lib/builder/translatable-fields.ts'tir; bu fonksiyon
+// yalnizca o whitelist'i section'in GERCEK (o an duzenlenen) content'iyle
+// birlestirip UI'nin gosterecegi oge etiketlerini/varsayilan degerlerini
+// hesaplar.
+function labelForRepeaterItem(item: JsonRecord, index: number): string {
+  for (const key of ["title", "question", "name", "label", "platform"]) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return `Öğe ${index + 1}`;
+}
+
+function buildTranslationRepeaters(
+  blockKey: string,
+  content: JsonRecord,
+): Array<{ arrayField: string; itemFields: readonly string[]; items: Array<{ id: string; label: string; defaultValues: Record<string, string> }> }> {
+  return getTranslatableRepeaters(blockKey).map((repeater) => {
+    const rawItems = arrayValue<JsonRecord>(content, repeater.arrayField);
+    return {
+      arrayField: repeater.arrayField,
+      itemFields: repeater.itemFields,
+      items: rawItems.map((item, index) => ({
+        id: typeof item.id === "string" && item.id ? item.id : `item-${index}`,
+        label: labelForRepeaterItem(item, index),
+        defaultValues: Object.fromEntries(repeater.itemFields.map((field) => [field, textValue(item, field)])),
+      })),
+    };
+  });
 }

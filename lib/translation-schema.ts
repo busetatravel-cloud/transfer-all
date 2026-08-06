@@ -86,7 +86,21 @@ export type TranslationFieldKey =
   | "primaryButtonText"
   | "secondaryButtonText"
   | "seoTitleHint"
-  | "seoDescriptionHint";
+  | "seoDescriptionHint"
+  // Website Builder (Faz 15) — Faz 14'te eklenen bloklarin cevrilebilir
+  // alanlari (bkz. lib/builder/translatable-fields.ts).
+  | "question"
+  | "answer"
+  | "quote"
+  | "label"
+  | "altText"
+  | "address"
+  | "hours"
+  | "platform"
+  | "whatsappButtonText"
+  | "phoneButtonText"
+  | "emptyStateTitle"
+  | "emptyStateDescription";
 
 export type TranslationDraftRecord = {
   id: string;
@@ -383,6 +397,18 @@ export const SECTION_FIELD_LABELS: Record<
     secondaryButtonText: "İkincil buton metni",
     seoTitleHint: "SEO başlığı",
     seoDescriptionHint: "SEO açıklaması",
+    question: "Soru",
+    answer: "Cevap",
+    quote: "Yorum",
+    label: "Etiket",
+    altText: "Alt metin",
+    address: "Adres",
+    hours: "Çalışma saatleri",
+    platform: "Platform",
+    whatsappButtonText: "WhatsApp buton metni",
+    phoneButtonText: "Telefon buton metni",
+    emptyStateTitle: "Boş durum başlığı",
+    emptyStateDescription: "Boş durum açıklaması",
   },
 };
 
@@ -456,6 +482,18 @@ export function getSectionFieldOrder(section: TranslationSection) {
         "secondaryButtonText",
         "seoTitleHint",
         "seoDescriptionHint",
+        "question",
+        "answer",
+        "quote",
+        "label",
+        "altText",
+        "address",
+        "hours",
+        "platform",
+        "whatsappButtonText",
+        "phoneButtonText",
+        "emptyStateTitle",
+        "emptyStateDescription",
       ] as const;
   }
 }
