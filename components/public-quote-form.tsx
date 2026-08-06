@@ -57,7 +57,7 @@ export function PublicQuoteForm({
 
   return (
     <form
-      className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
+      className="ps-card grid gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
       onSubmit={submit}
     >
       <input type="hidden" name="businessId" value={businessId} />
@@ -67,7 +67,7 @@ export function PublicQuoteForm({
       <Status state={state} pending={state.status === "saving"} />
       <div className="grid gap-3 md:grid-cols-2">
         <Field name="customerName" label={copy.customerName} />
-        <Field name="phone" label={copy.phone} />
+        <Field name="phone" label={copy.phone} type="tel" />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <Field name="email" label={copy.email} type="email" />
@@ -75,7 +75,7 @@ export function PublicQuoteForm({
       </div>
       <Field name="message" label={copy.message} as="textarea" rows={5} />
       <button
-        className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+        className="ps-cta-primary"
         disabled={state.status === "saving"}
         type="submit"
       >
@@ -103,13 +103,13 @@ function Field({
       <span className="text-sm font-medium text-slate-700">{label}</span>
       {as === "textarea" ? (
         <textarea
-          className="min-h-32 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+          className="min-h-32 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus-visible:border-slate-400 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-slate-200"
           name={name}
           rows={rows}
         />
       ) : (
         <input
-          className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+          className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus-visible:border-slate-400 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-slate-200"
           name={name}
           type={type}
         />
@@ -129,6 +129,10 @@ function Status({ state, pending }: { state: SaveState; pending: boolean }) {
         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : "border-slate-200 bg-slate-50 text-slate-700";
 
-  return <div className={`rounded-2xl border px-4 py-3 text-sm ${tone}`}>{state.message}</div>;
+  return (
+    <div aria-live="polite" className={`rounded-2xl border px-4 py-3 text-sm ${tone}`} role="status">
+      {state.message}
+    </div>
+  );
 }
 

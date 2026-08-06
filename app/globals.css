@@ -85,6 +85,236 @@ select {
 }
 
 /* ============================================================
+   Faz 15 — Public site paylaşılan buton sistemi.
+   Tema-farkında (theme-aware): --ps-primary/--ps-secondary/--ps-radius gibi
+   design-system değişkenlerini kullanır, bu yüzden HEM Modern HEM Luxury
+   (hem de ileride eklenecek her yeni tema) için otomatik doğru görünür —
+   Modern'in primaryColor'ı (#0f172a) zaten mevcut hardcoded bg-slate-950 ile
+   BİREBİR AYNI olduğu için bu, Modern'de SIFIR görsel fark yaratır; yalnızca
+   Luxury (ve gelecekteki temalar) artık gerçekten kendi renklerini kullanır.
+   WhatsApp: marka rengi (yeşil) kasıtlı olarak temadan bağımsızdır — WhatsApp
+   her yerde aynı yeşille tanınır, bu bilinçli bir istisna.
+   ============================================================ */
+.ps-cta-primary,
+.ps-cta-secondary,
+.ps-cta-outline,
+.ps-cta-text,
+.ps-cta-whatsapp,
+.ps-cta-phone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: var(--ps-button-height-md);
+  padding-inline: var(--ps-button-padding-x-md);
+  font-size: var(--ps-button-font-size-md);
+  font-weight: 600;
+  border-radius: var(--ps-radius);
+  border: 1px solid transparent;
+  transition:
+    background-color var(--ps-transition-base) var(--ps-easing-standard),
+    border-color var(--ps-transition-base) var(--ps-easing-standard),
+    color var(--ps-transition-base) var(--ps-easing-standard),
+    transform var(--ps-transition-base) var(--ps-easing-standard),
+    opacity var(--ps-transition-base) var(--ps-easing-standard);
+}
+
+.ps-cta-primary:focus-visible,
+.ps-cta-secondary:focus-visible,
+.ps-cta-outline:focus-visible,
+.ps-cta-text:focus-visible,
+.ps-cta-whatsapp:focus-visible,
+.ps-cta-phone:focus-visible {
+  outline: 2px solid var(--ps-secondary);
+  outline-offset: 2px;
+}
+
+.ps-cta-primary {
+  background: var(--ps-primary);
+  color: var(--ps-background);
+}
+
+.ps-cta-primary:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.ps-cta-secondary {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--ps-secondary) 45%, transparent);
+  color: var(--ps-text);
+}
+
+.ps-cta-secondary:hover {
+  border-color: var(--ps-secondary);
+  background: color-mix(in srgb, var(--ps-secondary) 8%, transparent);
+}
+
+.ps-cta-outline {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--ps-text) 25%, transparent);
+  color: var(--ps-text);
+}
+
+.ps-cta-outline:hover {
+  border-color: color-mix(in srgb, var(--ps-text) 45%, transparent);
+}
+
+.ps-cta-text {
+  height: auto;
+  padding-inline: 0;
+  color: var(--ps-primary);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: transparent;
+}
+
+.ps-cta-text:hover {
+  text-decoration-color: currentColor;
+}
+
+.ps-cta-whatsapp {
+  background: #25d366;
+  color: #ffffff;
+}
+
+.ps-cta-whatsapp:hover {
+  background: #1ebe57;
+  transform: translateY(-1px);
+}
+
+.ps-cta-phone {
+  background: var(--ps-surface);
+  border-color: color-mix(in srgb, var(--ps-secondary) 30%, transparent);
+  color: var(--ps-text);
+}
+
+.ps-cta-phone:hover {
+  border-color: var(--ps-secondary);
+}
+
+.ps-cta-primary:disabled,
+.ps-cta-secondary:disabled,
+.ps-cta-outline:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+@media (max-width: 640px) {
+  .ps-cta-mobile-block {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-cta-primary,
+  .ps-cta-secondary,
+  .ps-cta-outline,
+  .ps-cta-text,
+  .ps-cta-whatsapp,
+  .ps-cta-phone {
+    transition: none;
+  }
+
+  .ps-cta-primary:hover,
+  .ps-cta-whatsapp:hover {
+    transform: none;
+  }
+}
+
+/* ============================================================
+   Faz 15 — public site paylaşılan animasyon yardımcıları.
+   Hafif, katman gerektirmeyen CSS-only animasyonlar — hiçbir yeni paket
+   yüklenmedi. Tümü prefers-reduced-motion'a saygılıdır.
+   ============================================================ */
+@keyframes ps-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ps-animate-in {
+  animation: ps-fade-in-up 0.6s var(--ps-easing-emphasized) both;
+}
+
+.ps-animate-in-delay-1 {
+  animation-delay: 80ms;
+}
+
+.ps-animate-in-delay-2 {
+  animation-delay: 160ms;
+}
+
+.ps-hover-lift {
+  transition: transform var(--ps-transition-base) var(--ps-easing-standard), box-shadow var(--ps-transition-base) var(--ps-easing-standard);
+}
+
+.ps-hover-lift:hover {
+  transform: translateY(-4px);
+}
+
+.ps-hover-zoom {
+  overflow: hidden;
+}
+
+.ps-hover-zoom img {
+  transition: transform var(--ps-transition-slow) var(--ps-easing-standard);
+}
+
+.ps-hover-zoom:hover img {
+  transform: scale(1.06);
+}
+
+.ps-underline-hover {
+  position: relative;
+}
+
+.ps-underline-hover::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 100%;
+  bottom: -2px;
+  height: 2px;
+  background: currentColor;
+  transition: right var(--ps-transition-base) var(--ps-easing-standard);
+}
+
+.ps-underline-hover:hover::after {
+  right: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-animate-in,
+  .ps-animate-in-delay-1,
+  .ps-animate-in-delay-2 {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .ps-hover-lift:hover {
+    transform: none;
+  }
+
+  .ps-hover-zoom img,
+  .ps-hover-lift,
+  .ps-underline-hover::after {
+    transition: none;
+  }
+
+  .ps-hover-zoom:hover img {
+    transform: none;
+  }
+}
+
+/* ============================================================
    Public site — Luxury tema override'ları.
    Yalnızca ThemeStyleProvider'ın public site kök elemanına eklediği
    [data-ps-theme="luxury"] özniteliği altında geçerlidir. Admin paneli

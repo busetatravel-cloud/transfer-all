@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { MediaFrame, PanelSection, PublicSiteShell } from "@/components/public-site-shell";
+import { DetailContactCta, MediaFrame, PanelSection, PublicSiteShell } from "@/components/public-site-shell";
 import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import {
   resolveBusinessMediaAltText,
@@ -122,9 +122,7 @@ export default async function VehicleDetailPage({
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "vehicle_seat")}
             label="Koltuk"
           />
-          <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm leading-7 text-slate-600 shadow-sm">
-            Bu arac kaydi business sinirlari icinde tutulur.
-          </div>
+          <DetailContactCta business={site.panel.business} quoteHref={`/quote?lang=${site.locale}`} />
         </div>
       </PanelSection>
     </PublicSiteShell>

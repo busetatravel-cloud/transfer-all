@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { MediaFrame, PanelSection, PublicSiteShell } from "@/components/public-site-shell";
+import { DetailContactCta, MediaFrame, PanelSection, PublicSiteShell } from "@/components/public-site-shell";
 import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import {
   resolveBusinessMediaAltText,
@@ -86,9 +86,7 @@ export default async function ServiceDetailPage({
             imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "service_cover")}
             label="Hizmet kapak görseli"
           />
-          <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm leading-7 text-slate-600 shadow-sm">
-            Bu icerik sadece {site.panel.business.name} business kaydina aittir.
-          </div>
+          <DetailContactCta business={site.panel.business} quoteHref={`/quote?lang=${site.locale}`} />
         </div>
       </PanelSection>
     </PublicSiteShell>

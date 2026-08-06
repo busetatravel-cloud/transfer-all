@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { MediaFrame, PanelSection, PublicSiteShell } from "@/components/public-site-shell";
+import { MediaFrame, PanelSection, PhoneIcon, PublicSiteShell, WhatsAppIcon, toWhatsAppDigits } from "@/components/public-site-shell";
 import { PublicQuoteForm } from "@/components/public-quote-form";
 import { getLocalizedPublicSiteDataFromRequest } from "@/lib/public-site";
 import {
@@ -108,9 +108,27 @@ export default async function ContactPage({
               imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "logo")}
               label="Logo"
             />
-            <InfoRow label="Email" value={site.panel.business.email} />
-            <InfoRow label="Telefon" value={site.panel.business.phone ?? "-"} />
-            <InfoRow label="WhatsApp" value={site.panel.business.whatsapp ?? "-"} />
+            <a className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm transition hover:border-slate-300 hover:bg-white" href={`mailto:${site.panel.business.email}`}>
+              <span className="text-slate-500">Email</span>
+              <span className="max-w-[60%] truncate font-medium text-slate-900">{site.panel.business.email}</span>
+            </a>
+            {site.panel.business.phone ? (
+              <a className="ps-cta-phone justify-between" href={`tel:${site.panel.business.phone}`}>
+                <span className="flex items-center gap-2"><PhoneIcon /> Telefon</span>
+                <span>{site.panel.business.phone}</span>
+              </a>
+            ) : null}
+            {site.panel.business.whatsapp ? (
+              <a
+                className="ps-cta-whatsapp justify-between"
+                href={`https://wa.me/${toWhatsAppDigits(site.panel.business.whatsapp)}`}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <span className="flex items-center gap-2"><WhatsAppIcon /> WhatsApp</span>
+                <span>{site.panel.business.whatsapp}</span>
+              </a>
+            ) : null}
           </div>
         </PanelSection>
 
@@ -123,14 +141,5 @@ export default async function ContactPage({
         </PanelSection>
       </section>
     </PublicSiteShell>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="max-w-[60%] truncate font-medium text-slate-900">{value}</span>
-    </div>
   );
 }

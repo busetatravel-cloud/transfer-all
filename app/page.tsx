@@ -8,7 +8,10 @@ import {
   EmptyState,
   MediaFrame,
   PanelSection,
+  PhoneIcon,
   PublicSiteShell,
+  WhatsAppIcon,
+  toWhatsAppDigits,
 } from "@/components/public-site-shell";
 import {
   getLocalizedPublicSiteDataFromRequest,
@@ -119,6 +122,7 @@ export default async function HomePage({
 
   const business = site.panel.business;
   const withLocale = (href: string) => `${href}${href.includes("?") ? "&" : "?"}lang=${site.locale}`;
+  const whatsappDigits = business.whatsapp ? toWhatsAppDigits(business.whatsapp) : "";
 
   // Faz 11: bu business Website Builder'da bir "home" sayfasi yayinladiysa
   // (published snapshot) gercek public site bu sayfayi (Hero/ServicesGrid/CTA)
@@ -148,33 +152,34 @@ export default async function HomePage({
       <section className="grid gap-8">
         <div className="ps-hero grid gap-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.15fr_0.85fr] lg:p-10">
           <div className="grid content-start gap-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-              {business.domain ?? "Custom domain"}
-            </p>
-            <h1 className="ps-hero-title max-w-2xl text-4xl font-semibold tracking-tight text-slate-950 lg:text-6xl">
+            <h1 className="ps-hero-title ps-animate-in max-w-2xl text-4xl font-semibold tracking-tight text-slate-950 lg:text-6xl">
               {site.panel.profile.heroTitle || business.name}
             </h1>
-            <p className="max-w-2xl text-base leading-8 text-slate-600">
+            <p className="ps-animate-in ps-animate-in-delay-1 max-w-2xl text-base leading-8 text-slate-600">
               {site.panel.profile.heroSubtitle ||
-                "Business icin ozel public site. Menuler ve icerikler ayni domain icinde kalir."}
+                "Profesyonel şoförler, konforlu araçlar, zamanında transfer hizmeti."}
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
-              <Link
-                className="ps-cta-primary inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-                href={withLocale("/quote")}
-              >
+              <Link className="ps-cta-primary" href={withLocale("/quote")}>
                 {site.panel.profile.heroButtonText || "Teklif al"}
               </Link>
-              <Link
-                className="ps-cta-secondary inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
-                href={withLocale("/contact")}
-              >
+              <Link className="ps-cta-secondary" href={withLocale("/contact")}>
                 {site.copy.menus.contact}
               </Link>
+              {whatsappDigits ? (
+                <a
+                  className="ps-cta-whatsapp"
+                  href={`https://wa.me/${whatsappDigits}`}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <WhatsAppIcon /> WhatsApp
+                </a>
+              ) : null}
             </div>
           </div>
 
-          <div className="grid gap-3 rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+          <div className="ps-animate-in-delay-1 grid gap-3">
             <MediaFrame
               imageAlt={resolveBusinessMediaAltText(
                 site.panel.mediaAssets,
@@ -182,12 +187,12 @@ export default async function HomePage({
                 `${business.name} kapak görseli`,
               )}
               imageSrc={resolveBusinessMediaSourceUrl(site.panel.mediaAssets, "hero")}
-              label="Ana görsel"
             />
-            <InfoRow label="Business email" value={business.email} />
-            <InfoRow label="Telefon" value={business.phone ?? "-"} />
-            <InfoRow label="WhatsApp" value={business.whatsapp ?? "-"} />
-            <InfoRow label="Logo URL" value={business.logoUrl ?? "Empty"} />
+            {business.phone ? (
+              <a className="ps-cta-phone justify-start" href={`tel:${business.phone}`}>
+                <PhoneIcon /> {business.phone}
+              </a>
+            ) : null}
           </div>
         </div>
 
@@ -285,14 +290,5 @@ export default async function HomePage({
       </section>
       )}
     </PublicSiteShell>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="max-w-[60%] truncate font-medium text-slate-900">{value}</span>
-    </div>
   );
 }

@@ -131,31 +131,32 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
       copy={site.copy}
     >
       <section className="grid gap-6">
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+        <article className="ps-card rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
           <div className="grid gap-3">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               {site.copy.booking.eyebrow}
             </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
+            <h1 className="ps-animate-in text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
               {site.copy.booking.title}
             </h1>
-            <p className="max-w-3xl text-sm leading-7 text-slate-600">
+            <p className="ps-animate-in ps-animate-in-delay-1 max-w-3xl text-sm leading-7 text-slate-600">
               {site.copy.booking.description}
             </p>
           </div>
 
           <form className="mt-6 flex flex-col gap-3 sm:flex-row" action={`/booking?lang=${site.locale}`}>
+            <label className="sr-only" htmlFor="booking-search-q">
+              {site.copy.booking.searchPlaceholder}
+            </label>
             <input
-              className="h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus-visible:border-slate-400 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-slate-200"
               defaultValue={query}
+              id="booking-search-q"
               name="q"
               placeholder={site.copy.booking.searchPlaceholder}
               type="search"
             />
-            <button
-              className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
-              type="submit"
-            >
+            <button className="ps-cta-primary ps-cta-mobile-block !h-12" type="submit">
               {site.copy.booking.searchButton}
             </button>
           </form>
